@@ -1,20 +1,20 @@
 from django.contrib import admin
 
 # Register your models here.
-from .models.user import User
-from .models.favorite import Favorite
-from .models.userConsultation import UserConsultation
+from consulting.models.user import User
+from consulting.models.favorite import Favorite
+from consulting.models.userConsultation import UserConsultation
 
-from .models.consultant import Consultant
-from .models.registrationRequests import RegisterationRequests
+from consulting.models.consultant import Consultant
+from consulting.models.registrationRequests import RegisterationRequests
 
-from .models.consultation import Consultation
+from consulting.models.consultation import Consultation
 
-from .models.domain import Domain
-from .models.subdomain import SubDomain
+from consulting.models.domain import Domain
+from consulting.models.subdomain import SubDomain
 
 
-from .models.resource import Resource
+from consulting.models.resource import Resource
 
 admin.site.register(User)
 admin.site.register(Favorite)
