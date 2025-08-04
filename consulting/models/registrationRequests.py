@@ -5,7 +5,7 @@ from .consultant import Consultant
 class RegisterationRequests(models.Model):
     id = models.AutoField(primary_key=True)
 
-    consultant = models.ForeignKey(
+    consultant = models.OneToOneField(
         Consultant,
         on_delete=models.CASCADE,
         related_name='user_relations'

@@ -1,8 +1,8 @@
 from django.db import models
 from django.utils import timezone
-from .user import User
 from .domain import Domain
 from .subdomain import SubDomain
+from accounts.models import CustomUser
 
 class Consultant(models.Model):
     id = models.AutoField(primary_key=True)
@@ -11,12 +11,8 @@ class Consultant(models.Model):
     description = models.TextField()
     added_at = models.DateTimeField(default=timezone.now)
     validated = models.BooleanField(default=False)
-    # Link to User (assuming your custom User model is named 'User')
-    user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE,
-        related_name='consultant_profile'
-    )
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name="consultant_profile")
+
 
     
     domain = models.ForeignKey(

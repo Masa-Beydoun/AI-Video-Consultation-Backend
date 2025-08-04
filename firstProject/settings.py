@@ -29,6 +29,8 @@ INSTALLED_APPS = [
     'base.apps.BaseConfig',
     'rest_framework',
     'consulting',
+    'rest_framework_simplejwt.token_blacklist',
+    'accounts'
 ]
 
 MIDDLEWARE = [
@@ -40,9 +42,39 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'masa.beydoun74@gmail.com'
+EMAIL_HOST_PASSWORD = 'monw mczu qfhz wuyf'  # not your Gmail password
+DEFAULT_FROM_EMAIL = 'masa.beydoun74@gmail.com'
+
+AUTH_USER_MODEL = 'accounts.CustomUser'
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
+
+SIMPLE_JWT = {
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "BLACKLIST_AFTER_ROTATION": True,
+}
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',  # ✅ the default
+]
+import os
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
+
+# settings.py (TEMPORARY for debugging)
+MIDDLEWARE += ['django.middleware.common.CommonMiddleware']
+
 
 ROOT_URLCONF = 'firstProject.urls'
-
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',

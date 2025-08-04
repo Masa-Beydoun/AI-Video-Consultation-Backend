@@ -1,17 +1,19 @@
 from django.db import models
 from django.utils import timezone
+from accounts.models import CustomUser 
+from .consultant import Consultant
 
 class UserConsultation(models.Model):
     id = models.AutoField(primary_key=True)
 
     user = models.ForeignKey(
-        'User',
+        CustomUser,
         on_delete=models.CASCADE,
         related_name='user_consultations'
     )
 
     consultation = models.ForeignKey(
-        'Consultation',
+        Consultant,
         on_delete=models.CASCADE,
         related_name='user_interactions'
     )
