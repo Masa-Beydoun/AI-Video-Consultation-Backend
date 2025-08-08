@@ -5,7 +5,6 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 import os
 import mimetypes
 
-
 def resource_file_path(instance, filename):
     # Get the content type model name (e.g., "consultation")
     model_name = instance.relation_type.model if instance.relation_type else 'unknown'

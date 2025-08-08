@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class Domain(models.Model):
 
     id = models.AutoField(primary_key=True)  # auto-incremented ID

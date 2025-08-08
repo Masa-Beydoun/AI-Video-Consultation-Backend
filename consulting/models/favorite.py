@@ -2,6 +2,7 @@ from django.db import models
 from .consultant import Consultant
 from accounts.models import CustomUser
 
+
 class Favorite(models.Model):
     id = models.AutoField(primary_key=True)
 

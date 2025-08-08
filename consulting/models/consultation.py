@@ -4,6 +4,7 @@ from .consultant import Consultant
 from .domain import Domain
 from .subdomain import SubDomain
 
+
 class Consultation(models.Model):
     id = models.AutoField(primary_key=True)
 
@@ -21,6 +22,7 @@ class Consultation(models.Model):
         null=True,
         related_name='domain'
     )
+
 
     sub_domain = models.ForeignKey(
         SubDomain,
