@@ -33,3 +33,17 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['last_name'] = self.user.last_name
         data['role'] = self.user.role
         return data
+
+
+class OTPRequestSerializer(serializers.Serializer):
+    email = serializers.CharField()
+
+
+class OTPVerifySerializer(serializers.Serializer):
+    email = serializers.CharField()
+    otp = serializers.CharField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    email = serializers.CharField()
+    new_password = serializers.CharField()

@@ -5,12 +5,22 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.core.mail import EmailMultiAlternatives
+from django.conf import settings
+import random
+import string
+from datetime import timedelta
+
 from .serializers import (
-    CustomTokenObtainPairSerializer,
     UserRegistrationSerializer,
-    UserLoginSerializer
+    UserLoginSerializer,
+    CustomTokenObtainPairSerializer,
+    OTPRequestSerializer,
+    OTPVerifySerializer,
 )
+from django.contrib.auth import get_user_model
+
 
 User = get_user_model()
 
@@ -71,7 +81,6 @@ def send_better_consult_otp_email(recipient_email: str, otp: str, *, purpose: st
     message.send(fail_silently=False)
 
 
-
 # register 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -113,3 +122,95 @@ def logout_user(request):
         return Response({'message': 'Logged out successfully'})
     except Exception as e:
         return Response({'error': f'Logout error: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+# sending OTP
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def send_otp(request):
+    serializer = OTPRequestSerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data['email']
+        otp = ''.join(random.choices(string.digits, k=6))
+        # Store OTP in cache for 10 minutes
+        cache_key = f'otp_{email}'
+        cache.set(cache_key, otp, 600) 
+        # Send OTP via email
+        try:
+            send_better_consult_otp_email(email, otp, purpose="Email verification")
+            return Response({
+                'message': 'OTP sent successfully , check your email '
+            })
+        except Exception as e:
+            # If email fails, return error
+            return Response({
+                'error': 'Failed to send OTP email',
+                'email_error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# OTP verification
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_otp(request):
+    serializer = OTPVerifySerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data['email']
+        otp = serializer.validated_data['otp']
+        # Check OTP from cache
+        cache_key = f'otp_{email}'
+        stored_otp = cache.get(cache_key)
+        if stored_otp and stored_otp == otp:
+            # OTP is valid
+            cache.delete(cache_key)  
+            try:
+                user = User.objects.get(email=email)
+                # TODO: Add email_verified field to User model
+                # user.email_verified = True
+                # user.save()
+                
+                # Generate tokens for verified user
+                tokens = generate_tokens_for_user(user)
+                
+                return Response({
+                    'message': 'OTP verified successfully',
+                })
+            except User.DoesNotExist:
+                return Response({
+                    'error': 'User not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+        else:
+            return Response({
+                'error': 'Invalid OTP'
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# reset password
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def confirm_password_reset(request):
+    email = request.data.get('email')
+    new_password = request.data.get('new_password')
+
+    if not email:
+        return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not new_password:
+        return Response({'error': 'New password is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = User.objects.get(email=email)
+        user.set_password(new_password)
+        user.save()
+
+        # Generate new tokens for the user
+        tokens = generate_tokens_for_user(user)
+
+        return Response({
+            'message': 'Password reset successfully',
+            **tokens
+        }, status=status.HTTP_200_OK)
+
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
