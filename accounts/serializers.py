@@ -4,7 +4,8 @@ from .models import CustomUser
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = '__all__'
+        # fields = '__all__'
+        exclude = ['groups', 'user_permissions']  # 👈 Prevent including M2M fields
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):

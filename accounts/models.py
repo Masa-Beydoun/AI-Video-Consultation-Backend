@@ -19,7 +19,7 @@ class CustomUserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
-    ROLE_CHOICES = [('user', 'User'), ('consultant', 'Consultant')]
+    ROLE_CHOICES = [('user', 'User'), ('consultant', 'Consultant'),('admin','Admin')]
     GENDER_CHOICES = [('male', 'Male'), ('female', 'Female')]
 
     email = models.EmailField(unique=True)

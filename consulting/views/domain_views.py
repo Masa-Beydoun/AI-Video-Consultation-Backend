@@ -2,10 +2,14 @@
 
 from rest_framework import viewsets, status
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from consulting.models.domain import Domain
 from consulting.serializers.domain_serializer import DomainSerializer
+from consulting.permissions import IsAdminOrReadOnly # import your permission
 
 class DomainViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated & IsAdminOrReadOnly]
+
     def list(self, request):
         domains = Domain.objects.all()
         serializer = DomainSerializer(domains, many=True)
@@ -27,6 +31,7 @@ class DomainViewSet(viewsets.ViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, pk=None):
+
         try:
             domain = Domain.objects.get(pk=pk)
         except Domain.DoesNotExist:

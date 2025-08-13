@@ -35,6 +35,7 @@ class VerifyCodeView(APIView):
                 "user": RegisterSerializer(user).data
             }, status=200)
         return Response({"error": "Invalid code"}, status=400)
+    
 from django.contrib.auth import authenticate
 
 class LoginView(APIView):
