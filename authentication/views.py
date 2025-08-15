@@ -185,6 +185,41 @@ def verify_otp(request):
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def send_password_reset_otp(request):
+    serializer = OTPRequestSerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data['email']
+        # Generate OTP
+        otp = ''.join(random.choices(string.digits, k=6))
+        cache_key = f'password_reset_otp_{email}'
+        # Check if user exists 
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        try:
+            user_exists = User.objects.filter(email=email).exists()
+            if user_exists:
+                cache.set(cache_key, otp, 600) 
+                try:
+                    send_better_consult_otp_email(
+                        email, otp, purpose="Password Reset"
+                    )
+                except Exception as e:
+                    pass
+        except Exception:
+            pass 
+        return Response({
+            'message': 'If you have an account on our app, you will receive an OTP shortly.'
+        })
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
 # reset password
 @api_view(['POST'])
 @permission_classes([AllowAny])
