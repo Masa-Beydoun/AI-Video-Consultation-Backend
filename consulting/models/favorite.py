@@ -1,13 +1,13 @@
 from django.db import models
 from .consultant import Consultant
-from accounts.models import CustomUser
-
+# from accounts.models import CustomUser
+from .user import User 
 
 class Favorite(models.Model):
     id = models.AutoField(primary_key=True)
 
     user = models.ForeignKey(
-        CustomUser,
+        User,
         on_delete=models.CASCADE,
         related_name='favorites'
     )

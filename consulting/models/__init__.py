@@ -1,5 +1,5 @@
 # from .user import User
-from accounts.models import *
+# from accounts.models import *
 from .favorite import Favorite
 from .userConsultation import UserConsultation
 from .consultant import Consultant

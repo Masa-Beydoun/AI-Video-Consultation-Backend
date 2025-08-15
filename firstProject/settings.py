@@ -30,7 +30,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'consulting',
     'rest_framework_simplejwt.token_blacklist',
-    'accounts'
 ]
 
 MIDDLEWARE = [
@@ -42,15 +41,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'masa.beydoun74@gmail.com'
-EMAIL_HOST_PASSWORD = 'monw mczu qfhz wuyf'  # not your Gmail password
-DEFAULT_FROM_EMAIL = 'masa.beydoun74@gmail.com'
 
-AUTH_USER_MODEL = 'accounts.CustomUser'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -145,7 +136,6 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-AUTH_USER_MODEL = 'consulting.User'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -170,3 +160,5 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER='better.consult.rdmhy@gmail.com'
 EMAIL_HOST_PASSWORD='vakk rjvt axyh mfly'
 DEFAULT_FROM_EMAIL='better.consult.rdmhy@gmail.com'
+AUTH_USER_MODEL = 'consulting.User'
+

@@ -1,10 +1,11 @@
 from rest_framework import serializers
 from consulting.models.favorite import Favorite
-from accounts.models import CustomUser
+# from accounts.models import CustomUser
 from consulting.models.consultant import Consultant
+from authentication.serializers import User
 
 class FavoriteSerializer(serializers.ModelSerializer):
-    user_id = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(), source='user')
+    user_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), source='user')
     consultant_id = serializers.PrimaryKeyRelatedField(queryset=Consultant.objects.all(), source='consultant')
 
     class Meta:

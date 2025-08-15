@@ -5,8 +5,13 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from consulting.models import SubDomain, Domain
 from consulting.serializers.subdomain_serializer import SubDomainSerializer
+from consulting.permissions import IsAdminOrReadOnly # import your permission
+from rest_framework.permissions import IsAuthenticated
 
 class SubDomainViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated & IsAdminOrReadOnly]
+
+
     def list(self, request):
         subdomains = SubDomain.objects.all()
         serializer = SubDomainSerializer(subdomains, many=True)
