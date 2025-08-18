@@ -1,20 +1,21 @@
 from rest_framework import serializers
 from consulting.models.favorite import Favorite
-# from accounts.models import CustomUser
 from consulting.models.consultant import Consultant
 from authentication.serializers import User
 
 class FavoriteSerializer(serializers.ModelSerializer):
-    user_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), source='user')
-    consultant_id = serializers.PrimaryKeyRelatedField(queryset=Consultant.objects.all(), source='consultant')
+    # Remove user_id from being supplied externally
+    consultant_id = serializers.PrimaryKeyRelatedField(
+        queryset=Consultant.objects.all(), source='consultant'
+    )
 
     class Meta:
         model = Favorite
-        fields = ['id', 'user_id', 'consultant_id', 'added_at']
+        fields = ['id', 'consultant_id', 'added_at']
         read_only_fields = ['id', 'added_at']
 
     def validate(self, attrs):
-        user = attrs['user']
+        user = self.context['request'].user  # use authenticated user
         consultant = attrs['consultant']
 
         if consultant.user == user:
@@ -23,13 +24,15 @@ class FavoriteSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        user = self.context['request'].user
+        validated_data['user'] = user  # set the user automatically
         favorite, created = Favorite.objects.get_or_create(**validated_data)
         if not created:
             raise serializers.ValidationError("This favorite already exists.")
         return favorite
 
     def remove(self):
-        user = self.validated_data['user']
+        user = self.context['request'].user
         consultant = self.validated_data['consultant']
 
         try:
