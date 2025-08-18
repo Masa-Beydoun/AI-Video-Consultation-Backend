@@ -3,33 +3,36 @@ from django.utils import timezone
 from .domain import Domain
 from .subdomain import SubDomain
 from .user import User
-
 class Consultant(models.Model):
     id = models.AutoField(primary_key=True)
 
-    location = models.CharField(max_length=100)
-    description = models.TextField()
-    added_at = models.DateTimeField(default=timezone.now)
-    validated = models.BooleanField(default=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="consultant_profile")
 
+    # Basic info
+    location = models.CharField(max_length=100)
+    description = models.TextField()
 
-    
-    domain = models.ForeignKey(
-        Domain,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='consultants'
-    )
+    # Professional info
+    title = models.CharField(max_length=100, blank=True, null=True)
+    years_experience = models.PositiveIntegerField(blank=True, null=True)
+    domain = models.ForeignKey( Domain, on_delete=models.SET_NULL, null=True, related_name='consultants' ) 
 
-    sub_domain = models.ForeignKey(
-        SubDomain,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='consultants'
-    )
+    # Pricing & availability
+    cost = models.IntegerField(default=0)
 
-    
+    # Domain linkage
+    domain = models.ForeignKey(Domain, on_delete=models.SET_NULL, null=True, related_name='consultants')
+    sub_domain = models.ForeignKey(SubDomain, on_delete=models.SET_NULL, null=True, related_name='consultants')
+
+    # Validation
+    validated = models.BooleanField(default=False)
+    validated_by = models.ForeignKey(User, null=True, blank=True, related_name="validated_consultants", on_delete=models.SET_NULL)
+    validated_at = models.DateTimeField(null=True, blank=True)
+    added_at = models.DateTimeField(default=timezone.now)
+
+    # Rating (optional)
+    rating = models.FloatField(default=0)
+    review_count = models.IntegerField(default=0)
 
     def __str__(self):
         return f"{self.user.first_name} {self.user.last_name} ({self.domain.name if self.domain else 'No Domain'})"
