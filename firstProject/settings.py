@@ -64,6 +64,7 @@ MEDIA_URL = '/media/'
 # settings.py (TEMPORARY for debugging)
 MIDDLEWARE += ['django.middleware.common.CommonMiddleware']
 
+APPEND_SLASH = True
 
 ROOT_URLCONF = 'firstProject.urls'
 TEMPLATES = [

@@ -17,10 +17,10 @@ class ResourceSerializer(serializers.ModelSerializer):
         return None
     def validate(self, data):
         # Optional: ensure that the relation_id exists in the specified relation_type model
-        # relation_type = data.get('relation_type')
-        # relation_id = data.get('relation_id')
-        # if relation_type and relation_id:
-        #     model_class = relation_type.model_class()
-        #     if not model_class.objects.filter(id=relation_id).exists():
-        #         raise serializers.ValidationError("Related object not found.")
+        relation_type = data.get('relation_type')
+        relation_id = data.get('relation_id')
+        if relation_type and relation_id:
+            model_class = relation_type.model_class()
+            if not model_class.objects.filter(id=relation_id).exists():
+                raise serializers.ValidationError("Related object not found.")
         return data
