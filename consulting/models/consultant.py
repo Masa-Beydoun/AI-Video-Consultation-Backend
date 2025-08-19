@@ -6,7 +6,6 @@ from .subdomain import SubDomain
 
 class Consultant(models.Model):
     id = models.AutoField(primary_key=True)
-
     location = models.CharField(max_length=100)
     description = models.TextField()
     added_at = models.DateTimeField(default=timezone.now)
