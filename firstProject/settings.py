@@ -29,8 +29,15 @@ INSTALLED_APPS = [
     'base.apps.BaseConfig',
     'rest_framework',
     'consulting',
+    'django_filters',
     'rest_framework_simplejwt.token_blacklist',
 ]
+REST_FRAMEWORK = {
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend'
+    ]
+}
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

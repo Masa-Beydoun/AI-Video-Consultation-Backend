@@ -1,7 +1,8 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, filters
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
 
 from consulting.models.consultant import Consultant
 from consulting.serializers.consultant_serializer import ConsultantSerializer
@@ -10,6 +11,16 @@ class ConsultantViewSet(viewsets.ModelViewSet):
     queryset = Consultant.objects.all()
     serializer_class = ConsultantSerializer
     permission_classes = [permissions.IsAuthenticated]  # all endpoints require login
+
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['domain', 'sub_domain']
+
+    # 🔍 traverse into user relation
+    search_fields = [
+        'user__first_name',     # ✅ consultant’s first name
+        'user__last_name',      # ✅ consultant’s last name
+        'user__phone_number',   # ✅ consultant’s phone number
+    ]
 
     def get_queryset(self):
         # Everyone can see all consultants
