@@ -37,3 +37,31 @@ class ConsultantViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], url_path=r'by-domain-subdomain/(?P<domain_id>\d+)/(?P<subdomain_id>\d+)')
+    def get_by_domain_and_subdomain(self, request, domain_id=None, subdomain_id=None):
+        """
+        Get all consultants by domain id and subdomain id
+        """
+        consultants = Consultant.objects.filter(domain_id=domain_id, sub_domain_id=subdomain_id)
+        if not consultants.exists():
+            return Response(
+                {"detail": "No consultants found for this domain and subdomain."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = self.get_serializer(consultants, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], url_path=r'by-domain/(?P<domain_id>\d+)')
+    def get_by_domain(self, request, domain_id=None):
+        """
+        Get all consultants in a given domain by domain id
+        """
+        consultants = Consultant.objects.filter(domain_id=domain_id)
+        if not consultants.exists():
+            return Response(
+                {"detail": "No consultants found for this domain."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = self.get_serializer(consultants, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
