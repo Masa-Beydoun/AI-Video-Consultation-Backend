@@ -5,7 +5,6 @@ from .subdomain import SubDomain
 from .user import User
 class Consultant(models.Model):
     id = models.AutoField(primary_key=True)
-
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="consultant_profile")
 
     # Basic info
@@ -15,7 +14,6 @@ class Consultant(models.Model):
     # Professional info
     title = models.CharField(max_length=100, blank=True, null=True)
     years_experience = models.PositiveIntegerField(blank=True, null=True)
-    domain = models.ForeignKey( Domain, on_delete=models.SET_NULL, null=True, related_name='consultants' ) 
 
     # Pricing & availability
     cost = models.IntegerField(default=0)
