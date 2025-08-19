@@ -20,6 +20,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = [
         ('user', 'User'),
         ('consultant', 'Consultant'),
+        ('admin','Admin')
     ]
     GENDER_CHOICES = [
         ('male', 'Male'),

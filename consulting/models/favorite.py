@@ -1,6 +1,7 @@
 from django.db import models
 from .consultant import Consultant
-from .user import User
+# from accounts.models import CustomUser
+from .user import User 
 
 class Favorite(models.Model):
     id = models.AutoField(primary_key=True)

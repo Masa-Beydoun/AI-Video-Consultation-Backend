@@ -1,6 +1,9 @@
 from django.db import models
 from django.utils import timezone
 from .consultant import Consultant
+from .domain import Domain
+from .subdomain import SubDomain
+
 
 class Consultation(models.Model):
     id = models.AutoField(primary_key=True)
@@ -13,8 +16,20 @@ class Consultation(models.Model):
 
     text = models.TextField()
 
-    domain = models.CharField( max_length=50)
-    question = models.CharField(max_length=255)
+    domain = models.ForeignKey(
+        Domain,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='domain'
+    )
+
+
+    sub_domain = models.ForeignKey(
+        SubDomain,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='subdomain'
+    ) 
     number_of_used = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)
     # resource id
