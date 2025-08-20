@@ -10,7 +10,8 @@ from .views import (
     CustomTokenObtainPairView ,
     send_password_reset_otp ,
     view_profile,      
-    update_profile  
+    update_profile,
+    delete_account
 )
 
 urlpatterns = [
@@ -33,4 +34,7 @@ urlpatterns = [
     # Profile endpoints
     path('view_profile/', view_profile, name='view_profile'),
     path('update_profile/', update_profile, name='update_profile'),
+    path('delete_account/', delete_account, name='delete_account'),
+
+
 ] 

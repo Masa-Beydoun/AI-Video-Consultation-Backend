@@ -12,6 +12,7 @@ import random
 import string
 from datetime import timedelta
 from .serializers import UserUpdateSerializer
+from rest_framework.decorators import api_view, permission_classes
 
 
 from .serializers import (
@@ -281,3 +282,11 @@ def update_profile(request):
             'user': user_data,
         }, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_account(request):
+    user = request.user
+    user.delete()  
+    return Response({'message': 'User account deleted successfully'}, status=status.HTTP_200_OK)
