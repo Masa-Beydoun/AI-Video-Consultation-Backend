@@ -11,6 +11,9 @@ from django.conf import settings
 import random
 import string
 from datetime import timedelta
+from .serializers import UserUpdateSerializer
+from rest_framework.decorators import api_view, permission_classes
+
 
 from .serializers import (
     UserRegistrationSerializer,
@@ -219,7 +222,6 @@ def send_password_reset_otp(request):
 
 
 
-
 # reset password
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -249,3 +251,42 @@ def confirm_password_reset(request):
     except User.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def view_profile(request):
+    user = request.user  # the logged-in user
+    return Response({
+        'id': user.id,
+        'email': user.email,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'phone_number': user.phone_number,
+        'role': user.role,
+        'gender': user.gender,
+        'is_active': user.is_active,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_profile(request):
+    user = request.user
+    serializer = UserUpdateSerializer(user, data=request.data, partial=True)  
+    if serializer.is_valid():
+        serializer.save()
+        user_data = serializer.data
+        user_data['id'] = user.id  
+        return Response({
+            'message': 'Profile updated successfully',
+            'user': user_data,
+        }, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_account(request):
+    user = request.user
+    user.delete()  
+    return Response({'message': 'User account deleted successfully'}, status=status.HTTP_200_OK)
