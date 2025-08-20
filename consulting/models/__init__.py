@@ -6,3 +6,4 @@ from .domain import Domain
 from .subdomain import SubDomain
 from .resource import Resource
 from .consultant_application import ConsultantApplication
+from .review import Review

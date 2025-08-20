@@ -3,6 +3,8 @@ from django.utils import timezone
 from .domain import Domain
 from .subdomain import SubDomain
 from .user import User
+from django.db.models import Avg
+
 class Consultant(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="consultant_profile")
@@ -34,3 +36,9 @@ class Consultant(models.Model):
 
     def __str__(self):
         return f"{self.user.first_name} {self.user.last_name} ({self.domain.name if self.domain else 'No Domain'})"
+
+    def update_rating(self):
+        reviews = self.reviews.all()
+        self.review_count = reviews.count()
+        self.rating = reviews.aggregate(Avg("score"))["score__avg"] or 0
+        self.save(update_fields=["review_count", "rating"])
