@@ -219,7 +219,6 @@ def send_password_reset_otp(request):
 
 
 
-
 # reset password
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -249,3 +248,18 @@ def confirm_password_reset(request):
     except User.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def view_profile(request):
+    user = request.user  # the logged-in user
+    return Response({
+        'id': user.id,
+        'email': user.email,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'phone_number': user.phone_number,
+        'role': user.role,
+        'gender': user.gender,
+        'is_active': user.is_active,
+    }, status=status.HTTP_200_OK)
