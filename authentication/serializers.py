@@ -47,3 +47,11 @@ class OTPVerifySerializer(serializers.Serializer):
 class PasswordResetConfirmSerializer(serializers.Serializer):
     email = serializers.CharField()
     new_password = serializers.CharField()
+
+
+class UserUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'phone_number', 'gender']  
+        read_only_fields = ['id']  # id should not be editable
+

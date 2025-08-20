@@ -11,6 +11,8 @@ from django.conf import settings
 import random
 import string
 from datetime import timedelta
+from .serializers import UserUpdateSerializer
+
 
 from .serializers import (
     UserRegistrationSerializer,
@@ -263,3 +265,19 @@ def view_profile(request):
         'gender': user.gender,
         'is_active': user.is_active,
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_profile(request):
+    user = request.user
+    serializer = UserUpdateSerializer(user, data=request.data, partial=True)  
+    if serializer.is_valid():
+        serializer.save()
+        user_data = serializer.data
+        user_data['id'] = user.id  
+        return Response({
+            'message': 'Profile updated successfully',
+            'user': user_data,
+        }, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

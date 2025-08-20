@@ -8,7 +8,9 @@ from .views import (
     confirm_password_reset,
     logout_user,
     CustomTokenObtainPairView ,
-    send_password_reset_otp
+    send_password_reset_otp ,
+    view_profile,      
+    update_profile  
 )
 
 urlpatterns = [
@@ -28,5 +30,7 @@ urlpatterns = [
     path('confirm-password-reset/', confirm_password_reset, name='confirm_password_reset'),
     path('send-password-reset-otp/', send_password_reset_otp, name='send-password-reset-otp'),
     
-    
+    # Profile endpoints
+    path('view_profile/', view_profile, name='view_profile'),
+    path('update_profile/', update_profile, name='update_profile'),
 ] 
