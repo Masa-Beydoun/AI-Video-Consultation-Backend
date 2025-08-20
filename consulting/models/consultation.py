@@ -1,38 +1,20 @@
+# consulting/models/consultation.py
 from django.db import models
-from django.utils import timezone
 from .consultant import Consultant
-from .domain import Domain
-from .subdomain import SubDomain
+from .resource import Resource
+import os
 
+def resource_file_path(instance, filename):
+    return os.path.join("consultants", str(instance.related_object.id), "consultations", filename)
 
 class Consultation(models.Model):
-    id = models.AutoField(primary_key=True)
-
-    consultant = models.ForeignKey(
-        Consultant,
-        on_delete=models.CASCADE,
-        related_name='consultations'
-    )
-
-    text = models.TextField()
-
-    domain = models.ForeignKey(
-        Domain,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='domain'
-    )
-
-
-    sub_domain = models.ForeignKey(
-        SubDomain,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='subdomain'
-    ) 
-    number_of_used = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(default=timezone.now)
-    # resource id
-
-    def __str__(self):
-        return f"Consultation by {self.consultant.user.first_name} - {self.question[:30]}"
+    consultant = models.ForeignKey(Consultant, on_delete=models.CASCADE)
+    resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name="consultations")
+    question = models.TextField()
+    question_start = models.FloatField()
+    question_end = models.FloatField()
+    answer = models.TextField()
+    answer_start = models.FloatField()
+    answer_end = models.FloatField()
+    confidence_question = models.FloatField()
+    confidence_answer = models.FloatField()

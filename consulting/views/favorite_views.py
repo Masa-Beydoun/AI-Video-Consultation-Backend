@@ -10,6 +10,19 @@ from consulting.serializers.favorite_serializer import FavoriteSerializer
 class FavoriteView(APIView):
     permission_classes = [IsAuthenticated]  # ensure user is logged in
 
+    def get(self, request):
+        """
+        Return the consultants the authenticated user has favorited.
+        GET /api/favorites/
+        """
+        favorites = Favorite.objects.filter(user=request.user).select_related("consultant", "consultant__user")
+        consultants = [f.consultant for f in favorites]
+
+        from consulting.serializers.consultant_serializer import ConsultantSerializer
+        serializer = ConsultantSerializer(consultants, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def post(self, request):
         serializer = FavoriteSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():

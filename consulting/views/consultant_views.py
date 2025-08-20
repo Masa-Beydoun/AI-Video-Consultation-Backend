@@ -1,7 +1,8 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, filters
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
 
 from consulting.models.consultant import Consultant
 from consulting.serializers.consultant_serializer import ConsultantSerializer
@@ -10,6 +11,16 @@ class ConsultantViewSet(viewsets.ModelViewSet):
     queryset = Consultant.objects.all()
     serializer_class = ConsultantSerializer
     permission_classes = [permissions.IsAuthenticated]  # all endpoints require login
+
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['domain', 'sub_domain']
+
+    # 🔍 traverse into user relation
+    search_fields = [
+        'user__first_name',     # ✅ consultant’s first name
+        'user__last_name',      # ✅ consultant’s last name
+        'user__phone_number',   # ✅ consultant’s phone number
+    ]
 
     def get_queryset(self):
         # Everyone can see all consultants
@@ -36,4 +47,32 @@ class ConsultantViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(consultant, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], url_path=r'by-domain-subdomain/(?P<domain_id>\d+)/(?P<subdomain_id>\d+)')
+    def get_by_domain_and_subdomain(self, request, domain_id=None, subdomain_id=None):
+        """
+        Get all consultants by domain id and subdomain id
+        """
+        consultants = Consultant.objects.filter(domain_id=domain_id, sub_domain_id=subdomain_id)
+        if not consultants.exists():
+            return Response(
+                {"detail": "No consultants found for this domain and subdomain."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = self.get_serializer(consultants, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], url_path=r'by-domain/(?P<domain_id>\d+)')
+    def get_by_domain(self, request, domain_id=None):
+        """
+        Get all consultants in a given domain by domain id
+        """
+        consultants = Consultant.objects.filter(domain_id=domain_id)
+        if not consultants.exists():
+            return Response(
+                {"detail": "No consultants found for this domain."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = self.get_serializer(consultants, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
