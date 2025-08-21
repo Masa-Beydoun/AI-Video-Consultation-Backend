@@ -4,6 +4,7 @@ from .domain import Domain
 from .subdomain import SubDomain
 from .user import User
 from django.db.models import Avg
+from .resource import Resource
 
 class Consultant(models.Model):
     id = models.AutoField(primary_key=True)
@@ -30,6 +31,13 @@ class Consultant(models.Model):
     validated_at = models.DateTimeField(null=True, blank=True)
     added_at = models.DateTimeField(default=timezone.now)
 
+    photo = models.ForeignKey(
+        Resource,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="consultants"
+    )
     # Rating (optional)
     rating = models.FloatField(default=0)
     review_count = models.IntegerField(default=0)

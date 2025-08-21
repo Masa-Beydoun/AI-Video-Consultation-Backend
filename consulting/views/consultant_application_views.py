@@ -117,7 +117,9 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                     cost=application.cost,
                     validated=True,
                     validated_by=user,
-                    validated_at=timezone.now()
+                    validated_at=timezone.now(),
+                    photo=application.photo  # 👈 copy photo resource
+
                 )
                 # ✅ Update the user's role to 'consultant'
                 application.user.role = "consultant"

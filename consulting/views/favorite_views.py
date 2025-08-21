@@ -19,8 +19,11 @@ class FavoriteView(APIView):
         consultants = [f.consultant for f in favorites]
 
         from consulting.serializers.consultant_serializer import ConsultantSerializer
-        serializer = ConsultantSerializer(consultants, many=True)
-
+        serializer = ConsultantSerializer(
+            consultants, 
+            many=True, 
+            context={'request': request}  # ⚠ pass the request context here
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):

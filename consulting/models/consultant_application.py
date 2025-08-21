@@ -3,6 +3,7 @@ from django.utils import timezone
 from .user import User
 from .domain import Domain
 from .subdomain import SubDomain
+from .resource import Resource
 
 class ConsultantApplication(models.Model):
     STATUS_CHOICES = [
@@ -16,6 +17,13 @@ class ConsultantApplication(models.Model):
         User, 
         on_delete=models.CASCADE, 
         related_name="consultant_applications"
+    )
+    photo = models.ForeignKey(
+        Resource,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="consultant_applications_photo"
     )
     location = models.CharField(max_length=100)
     description = models.TextField()
