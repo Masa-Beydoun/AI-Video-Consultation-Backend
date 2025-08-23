@@ -33,6 +33,8 @@ INSTALLED_APPS = [
     'consulting',
     'django_filters',
     'rest_framework_simplejwt.token_blacklist',
+
+    'chat',
 ]
 REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': [
