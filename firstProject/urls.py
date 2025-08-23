@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/', include('consulting.urls')),  # <-- include this, not domain_urls directly
 
     path('api/auth/', include('authentication.urls')),
+
 ]
 
 if settings.DEBUG:
