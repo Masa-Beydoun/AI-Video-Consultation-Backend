@@ -83,3 +83,13 @@ class ConsultantViewSet(viewsets.ModelViewSet):
         consultants = Consultant.objects.order_by('-rating', '-review_count')[:10]
         serializer = self.get_serializer(consultants, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='top-20-rated')
+    def top_20_rated(self, request):
+        """
+        Return the 20 highest-rated consultants
+        GET /api/consultants/top-20-rated/
+        """
+        consultants = Consultant.objects.order_by('-rating', '-review_count')[:20]
+        serializer = self.get_serializer(consultants, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)

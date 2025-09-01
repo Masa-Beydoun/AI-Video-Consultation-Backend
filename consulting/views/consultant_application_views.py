@@ -101,6 +101,16 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
         application.reviewed_at = timezone.now()
         application.save()
 
+        # ✅ Automatically approve domain/subdomain if they are pending
+        if status_value == "approved":
+            if application.domain and application.domain.status == "pending":
+                application.domain.status = "approved"
+                application.domain.save(update_fields=["status"])
+
+            if application.sub_domain and application.sub_domain.status == "pending":
+                application.sub_domain.status = "approved"
+                application.sub_domain.save(update_fields=["status"])
+
         # If approved, create a Consultant
         consultant_data = None
         if status_value == "approved":
@@ -119,20 +129,26 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                     validated_at=timezone.now(),
                 )
 
-                # ✅ Create a new Resource for the consultant's photo
+                # Copy the photo if exists
                 if application.photo:
+                    from django.contrib.contenttypes.models import ContentType
                     new_photo = Resource.objects.create(
-                        file=application.photo.file,  # reuse the same file
+                        file=application.photo.file,
                         relation_type=ContentType.objects.get_for_model(Consultant),
                         relation_id=consultant.id,
-                        file_meta_data=application.photo.file_meta_data,  # copy metadata
+                        file_meta_data=application.photo.file_meta_data,
                     )
                     consultant.photo = new_photo
                     consultant.save(update_fields=["photo"])
 
-                # ✅ Update the user's role to 'consultant'
+                # Update user role to 'consultant'
                 application.user.role = "consultant"
                 application.user.save(update_fields=['role'])
+
+                consultant_data = {
+                    "id": consultant.id,
+                    "user": consultant.user.email
+                }
 
         response_data = {
             "id": application.id,
@@ -143,4 +159,3 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
-
