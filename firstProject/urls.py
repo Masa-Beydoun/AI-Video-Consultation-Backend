@@ -15,6 +15,8 @@ urlpatterns = [
     path('api/', include('consulting.urls')), 
 
     path('api/auth/', include('authentication.urls')),
+
+    path('api/chat/', include('chat.urls')),
 ]
 
 if settings.DEBUG:

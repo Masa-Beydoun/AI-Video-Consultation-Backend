@@ -12,6 +12,7 @@ class UserConsultation(models.Model):
         related_name='user_consultations'
     )
 
+    # rating by consultant 
     consultation = models.ForeignKey(
         Consultant,
         on_delete=models.CASCADE,

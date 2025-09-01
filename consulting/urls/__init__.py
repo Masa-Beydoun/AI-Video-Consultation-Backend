@@ -9,7 +9,8 @@ urlpatterns = [
     path('consultant-applications/',include('consulting.urls.consultant_application_urls')),
     path('consultants/',include('consulting.urls.consultant_urls')),
     path('reviews/',include('consulting.urls.review_urls')),
-    path('videos/',include('consulting.urls.video_quality_urls')),
+    path('', include('consulting.urls.transcription_urls')),
+
 
     # path('auth/', include('consulting.urls.auth_urls')),  # 👈 Add this
 
