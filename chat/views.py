@@ -4,8 +4,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from .models import Message, Chat
 from consulting.models.consultant import Consultant
-from .serializers import MessageSerializer, ChatSerializer
+from .serializers import MessageSerializer, ChatSerializer, ConsultantSerializer
 from rest_framework.generics import ListAPIView, DestroyAPIView
+from django.core.files.storage import default_storage
 
 # Ask question
 class MessageCreateView(APIView):
@@ -119,3 +120,62 @@ class ChatDeleteView(APIView):
             {"message": "Chat deleted successfully"},
             status=status.HTTP_204_NO_CONTENT
         )
+
+# Question without specified consultant
+class QuestionConsultantsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        question = request.data.get("question")
+        if not question:
+            return Response({"error": "Question is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        consultants = Consultant.objects.all()
+
+        if not consultants.exists():
+            return Response(
+                {"message": f"Nobody answered this question: '{question}'"},
+                status=status.HTTP_200_OK
+            )
+
+        serializer = ConsultantSerializer(consultants, many=True)
+        return Response({
+            "question": question,
+            "consultants": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+ALLOWED_AUDIO_TYPES = [
+    "audio/mpeg",      # .mp3
+    "audio/wav",       # .wav
+    "audio/x-wav",
+    "audio/webm",      # .webm
+    "audio/ogg",       # .ogg
+    "audio/flac",      # .flac
+    "audio/mp4",       # .m4a 
+    "video/mp4",       # .mp4 
+]
+
+# Voice question
+class VoiceToTextView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        audio_file = request.FILES.get("voice")
+        if not audio_file:
+            return Response({"error": "No voice file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if audio_file.content_type not in ALLOWED_AUDIO_TYPES:
+            return Response(
+                {"error": f"Invalid file type: {audio_file.content_type}. Please upload a valid audio file."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        text = self.voice_transcription(audio_file)
+
+        return Response({"transcription": text}, status=status.HTTP_200_OK)
+    
+    def voice_transcription(self, audio_file):
+        return "This is a dummy transcription of the voice."
+
+
