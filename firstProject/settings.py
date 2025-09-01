@@ -156,11 +156,11 @@ REST_FRAMEWORK = {
 }
 
 
-import os
-from dotenv import load_dotenv
-import os
+# import os
+# from dotenv import load_dotenv
+# import os
 
-load_dotenv()
+# load_dotenv()
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'

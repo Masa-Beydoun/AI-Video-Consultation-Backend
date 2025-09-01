@@ -11,6 +11,8 @@ import os
 from consulting.models.consultant import Consultant
 from consulting.utils.video_checks import run_all_checks
 from consulting.permissions import IsConsultant
+from consulting.utils.segmenter_service import segment_video_into_consultations
+from django.core.files import File
 
 
 class ConsultationViewSet(viewsets.ViewSet):
@@ -70,44 +72,64 @@ class ConsultationViewSet(viewsets.ViewSet):
         serializer = ConsultationSerializer(consultations, many=True)
         return Response(serializer.data)
 
-    @action(
-        detail=False,
-        methods=['post'],
-        url_path='quality-check',
-        parser_classes=[MultiPartParser, FormParser],
-        permission_classes=[IsConsultant]
-    )
-    def quality_check(self, request):
-        user = request.user
-        try:
-            consultant = user.consultant_profile
-        except Consultant.DoesNotExist:
-            return Response({"error": "User is not a consultant"}, status=400)
 
-        uploaded_file = request.FILES.get('file')
-        if not uploaded_file:
-            return Response({"error": "'file' is required (multipart form-data)."}, status=400)
+
+    @action(detail=True, methods=['post'])
+    def segment(self, request, pk=None):
+        # Get approved resource by id
+        try:
+            resource = Resource.objects.get(id=pk)
+            qc = resource.quality_check
+            if qc.status != "approved":
+                return Response({"error": "Video not approved for segmentation"}, status=400)
+        except (Resource.DoesNotExist, ResourceQualityCheck.DoesNotExist):
+            return Response({"error": "Resource or quality check not found"}, status=404)
 
         temp_files = []
         try:
-            # Save uploaded video to temp file
-            import tempfile, os
-            tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1])
-            for chunk in uploaded_file.chunks():
+            # Save original video temporarily
+            tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(resource.file_path.name)[1])
+            for chunk in resource.file_path.chunks():
                 tmp_video.write(chunk)
             tmp_video.flush()
             tmp_video.close()
             video_path = tmp_video.name
             temp_files.append(video_path)
 
-            # Run video checks (no reference image needed)
-            from consulting.utils.video_checks import run_all_checks
-            results = run_all_checks(video_path, reference_image_path=None)
+            # --- Run segmentation util ---
+            from consulting.utils.segmenter_service import segment_video_into_consultations
+            segments = segment_video_into_consultations(video_path)  # list of paths
 
-            return Response({"status": "ok", "results": results}, status=200)
+            # Get consultant
+            try:
+                consultant = request.user.consultant
+            except Consultant.DoesNotExist:
+                return Response({"error": "User is not linked to a consultant"}, status=400)
+
+            # Save segments
+            created_consults = []
+            for seg_path in segments:
+                with open(seg_path, "rb") as f:
+                    seg_resource = Resource.objects.create(
+                        file_path=File(f, name=os.path.basename(seg_path)),
+                        relation_type="consultation_segment",
+                        relation_id=0
+                    )
+                consultation = Consultation.objects.create(
+                    consultant=consultant,
+                    resource=seg_resource
+                )
+                created_consults.append(consultation.id)
+
+            # (Optional) delete or mark the original resource
+            resource.delete()
+
+            return Response({
+                "status": "segmented and stored successfully",
+                "consultations": created_consults
+            })
         finally:
-            # cleanup temp files
-            for f in temp_files:
+            for f in temp_files:  # only delete the original tmp video
                 try:
                     os.remove(f)
                 except:

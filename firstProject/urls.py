@@ -12,7 +12,7 @@ def home(request):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('consulting.urls')),  # <-- include this, not domain_urls directly
+    path('api/', include('consulting.urls')), 
 
     path('api/auth/', include('authentication.urls')),
 ]

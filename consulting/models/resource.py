@@ -17,8 +17,8 @@ class Resource(models.Model):
     file_meta_data = models.JSONField(blank=True, null=True)
 
     # Generic relation
-    relation_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    relation_id = models.PositiveIntegerField()
+    relation_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, blank=True)
+    relation_id = models.PositiveIntegerField(null=True, blank=True)
     related_object = GenericForeignKey('relation_type', 'relation_id')
 
     created_at = models.DateTimeField(default=timezone.now)

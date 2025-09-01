@@ -104,9 +104,8 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
         # If approved, create a Consultant
         consultant_data = None
         if status_value == "approved":
-            # Only create if not already a consultant
             if not hasattr(application.user, "consultant_profile"):
-                from consulting.models.consultant import Consultant  # import here to avoid circular imports
+                from consulting.models.consultant import Consultant  
                 consultant = Consultant.objects.create(
                     user=application.user,
                     location=application.location,
@@ -118,21 +117,22 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                     validated=True,
                     validated_by=user,
                     validated_at=timezone.now(),
-                    photo=application.photo  # 👈 copy photo resource
-
                 )
+
+                # ✅ Create a new Resource for the consultant's photo
+                if application.photo:
+                    new_photo = Resource.objects.create(
+                        file=application.photo.file,  # reuse the same file
+                        relation_type=ContentType.objects.get_for_model(Consultant),
+                        relation_id=consultant.id,
+                        file_meta_data=application.photo.file_meta_data,  # copy metadata
+                    )
+                    consultant.photo = new_photo
+                    consultant.save(update_fields=["photo"])
+
                 # ✅ Update the user's role to 'consultant'
                 application.user.role = "consultant"
                 application.user.save(update_fields=['role'])
-
-                consultant_data = {
-                    "id": consultant.id,
-                    "user": consultant.user.id,
-                    "location": consultant.location,
-                    "domain": consultant.domain.id if consultant.domain else None,
-                    "sub_domain": consultant.sub_domain.id if consultant.sub_domain else None,
-                    "validated": consultant.validated
-                }
 
         response_data = {
             "id": application.id,

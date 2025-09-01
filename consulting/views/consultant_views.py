@@ -17,13 +17,10 @@ class ConsultantViewSet(viewsets.ModelViewSet):
 
     # 🔍 traverse into user relation
     search_fields = [
-        'user__first_name',     # ✅ consultant’s first name
-        'user__last_name',      # ✅ consultant’s last name
-        'user__phone_number',   # ✅ consultant’s phone number
+        'user__first_name', 'user__last_name', 'user__phone_number',   
     ]
 
     def get_queryset(self):
-        # Everyone can see all consultants
         return Consultant.objects.all()
 
     def retrieve(self, request, *args, **kwargs):
@@ -74,5 +71,15 @@ class ConsultantViewSet(viewsets.ModelViewSet):
                 {"detail": "No consultants found for this domain."},
                 status=status.HTTP_404_NOT_FOUND
             )
+        serializer = self.get_serializer(consultants, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], url_path='top-rated')
+    def top_rated(self, request):
+        """
+        Return the 10 highest-rated consultants
+        GET /api/consultants/top-rated/
+        """
+        consultants = Consultant.objects.order_by('-rating', '-review_count')[:10]
         serializer = self.get_serializer(consultants, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
