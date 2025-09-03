@@ -1,0 +1,11 @@
+python-dotenv
+Django>=3.2
+djangorestframework>=3.12
+djangorestframework-simplejwt>=5.0.0
+django-filter
+numpy
+pydub
+librosa
+openai-whisper
+firebase-admin
+opencv-python
