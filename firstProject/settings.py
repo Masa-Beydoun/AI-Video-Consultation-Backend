@@ -1,6 +1,8 @@
 
 from pathlib import Path
 from datetime import timedelta
+import os
+
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -35,6 +37,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
 
     'chat',
+    'notifications',
 ]
 REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': [
@@ -176,3 +179,6 @@ EMAIL_HOST_PASSWORD='vakk rjvt axyh mfly'
 DEFAULT_FROM_EMAIL='better.consult.rdmhy@gmail.com'
 AUTH_USER_MODEL = 'consulting.User'
 
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+FIREBASE_CREDENTIALS_FILE = os.path.join(BASE_DIR, "secrets", "serviceAccountKey.json")

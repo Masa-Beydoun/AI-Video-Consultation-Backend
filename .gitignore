@@ -11,3 +11,4 @@ __pycache__/
 basic-auth-env/
 .venv/
 venv/
+secrets/
