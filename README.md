@@ -47,7 +47,9 @@ python manage.py runserver
 
 * Default endpoint: `http://127.0.0.1:8000/api/`
 
-## Dependencies
+----------------------------------------------------------------------------------------------------
+
+## Dependencies : 
 
 * Django >= 3.2
 * djangorestframework >= 3.12
