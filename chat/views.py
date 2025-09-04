@@ -41,6 +41,20 @@ class MessageCreateView(APIView):
             defaults={"title": f"Chat with {consultant}"}
         )
 
+        history = []
+        messages = Message.objects.filter(chat=chat).order_by("sent_at")
+
+        current = None
+        for message in messages:
+            if message.sender == "U":
+                current = {"question": message.text, "answer": None, "entities": {}}
+            else :
+                if current:
+                    current["answer"] = message.text
+                    history.append(current)
+                    current = None
+
+
         # Save user message
         user_message = Message.objects.create(
             chat=chat,
@@ -50,7 +64,7 @@ class MessageCreateView(APIView):
 
         domain = consultant.domain.name
         # ---- Generate consultant reply ----
-        reply_text, consultation_ids = self.generate_reply(user_message.text, consultant_id, domain)
+        reply_text, consultation_ids = self.generate_reply(user_message.text, consultant_id, domain, history)
 
         if consultation_ids:
             text = ""
@@ -86,7 +100,7 @@ class MessageCreateView(APIView):
             "message_resources": MessageResourceSerializer(message_resources, many = True).data
         }, status=status.HTTP_201_CREATED)
 
-    def generate_reply(self, user_text, consultant_id, domain):
+    def generate_reply(self, user_text, consultant_id, domain, history = []):
 
         consultations = Consultation.objects.filter(consultant_id = consultant_id)
         if(consultations.count() < 1):
@@ -106,7 +120,7 @@ class MessageCreateView(APIView):
 
         faq_handler = MultiQuestionHandler(faqs)
 
-        result = faq_handler.process(user_text, domain = domain)
+        result = faq_handler.process(user_text, domain=domain, history=history)
         
         consultation_ids = []
         for r in result["results"]:
@@ -115,7 +129,7 @@ class MessageCreateView(APIView):
 
         if result["results"] and result["results"][0]["match"]["matched"]:
             return result["results"][0]["match"]["main"]["answer"], consultation_ids
-        return "Sorry, I don’t have an exact answer, but I can connect you with a consultant."
+        return "Sorry, I don’t have an exact answer, but I can connect you with a consultant.", []
 
 
 # All chats

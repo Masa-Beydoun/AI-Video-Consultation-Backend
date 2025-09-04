@@ -163,7 +163,12 @@ class MultiQuestionHandler:
         self.context = ConversationContext()
         self.followup = FollowUpProcessor()
 
-    def process(self, user_input: str, domain: str = "general") -> Dict:
+    def process(self, user_input: str, domain: str = "general", history: List[Dict] = None) -> Dict:
+        # load history into context if provided
+        if history:
+            for h in history:
+                self.context.add_interaction(h["question"], h.get("answer") or "", h.get("entities"))
+
         qs = self.splitter.split_questions(user_input)
         out = {"input": user_input, "results": []}
         for q in qs:
@@ -174,13 +179,13 @@ class MultiQuestionHandler:
                 "original": q,
                 "resolved": resolved,
                 "entities": ents,
-                "match": match  # contains only IDs now
+                "match": match
             })
             if match["matched"]:
-                # still update context for follow-ups
+                # update context for follow-ups
                 self.context.add_interaction(resolved, str(match["main_id"]), ents)
         return out
 
+
     def clear(self):
         self.context.clear()
-
