@@ -1,10 +1,15 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, NotFound
+from rest_framework.exceptions import PermissionDenied
+
 from django.utils import timezone
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
+from django.core.files import File
+from django.contrib.contenttypes.models import ContentType
+
+import os
 
 from consulting.models.consultant_application import ConsultantApplication
 from consulting.models.resource import Resource
@@ -24,44 +29,32 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
         return ConsultantApplication.objects.filter(user=user).order_by('-created_at')
 
     def get_permissions(self):
-        # Use default IsAuthenticated for all
-        permissions_list = [permissions.IsAuthenticated()]
-        return permissions_list
+        return [permissions.IsAuthenticated()]
 
     def retrieve(self, request, *args, **kwargs):
-        """Only admin or the owner can retrieve, include related resources"""
         instance = self.get_object()
         user = request.user
-
-        # Permission check
         if not (hasattr(user, "role") and user.role == "admin") and instance.user != user:
             raise PermissionDenied("You do not have permission to view this application.")
 
-        # Serialize the application
         serializer = self.get_serializer(instance)
-
-        # Get all resources related to this application
         resources = Resource.objects.filter(
-            relation_type__model='consultantapplication', 
+            relation_type__model='consultantapplication',
             relation_id=instance.id
         )
         resources_serialized = ResourceSerializer(resources, many=True, context={'request': request}).data
 
-        # Combine the application and resources
         data = serializer.data
         data['resources'] = resources_serialized
-
         return Response(data)
 
     def perform_create(self, serializer):
-        """Only normal users can create"""
         user = self.request.user
         if not hasattr(user, "role") or user.role != "user":
             raise PermissionDenied("Only normal users can submit applications.")
         serializer.save(user=user)
 
     def update(self, request, *args, **kwargs):
-        """Only the owner can update if not approved/rejected"""
         instance = self.get_object()
         user = request.user
         if instance.user != user:
@@ -74,19 +67,14 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
         return self.update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        """Only owner or admin can delete"""
         instance = self.get_object()
         user = request.user
-        if hasattr(user, "role") and user.role == "admin":
+        if hasattr(user, "role") and user.role == "admin" or instance.user == user:
             return super().destroy(request, *args, **kwargs)
-        elif instance.user == user:
-            return super().destroy(request, *args, **kwargs)
-        else:
-            raise PermissionDenied("You cannot delete this application.")
+        raise PermissionDenied("You cannot delete this application.")
 
     @action(detail=True, methods=['post'], url_path='review')
     def review_application(self, request, pk=None):
-        """Only admin can approve/reject; only pending applications can be reviewed"""
         user = request.user
         if not hasattr(user, "role") or user.role != "admin":
             raise PermissionDenied("Only admins can review applications.")
@@ -112,12 +100,12 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
         application.reviewed_at = timezone.now()
         application.save(update_fields=["status", "reviewed_by", "reviewed_at"])
 
-        # ✅ Send email notification
+        # Send email notification
         try:
             send_application_status_email(application.user, application, status_value)
         except Exception as e:
-            # Don’t break flow if email fails, just log or ignore
             print(f"Failed to send email: {e}")
+
         # Automatically approve pending domain/subdomain
         if status_value == "approved":
             if application.domain and application.domain.status == "pending":
@@ -130,41 +118,55 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
 
         # If approved, create a new Consultant
         consultant_data = None
-        if status_value == "approved":
-            if not Consultant.objects.filter(user=application.user).exists():
-                consultant = Consultant.objects.create(
-                    user=application.user,
-                    location=application.location,
-                    description=application.description,
-                    years_experience=application.years_experience,
-                    domain=application.domain,
-                    sub_domain=application.sub_domain,
-                    cost=application.cost,
-                    validated=True,
-                    validated_by=user,
-                    validated_at=timezone.now(),
-                )
+        if status_value == "approved" and not Consultant.objects.filter(user=application.user).exists():
+            consultant = Consultant.objects.create(
+                user=application.user,
+                location=application.location,
+                description=application.description,
+                years_experience=application.years_experience,
+                domain=application.domain,
+                sub_domain=application.sub_domain,
+                cost=application.cost,
+                validated=True,
+                validated_by=user,
+                validated_at=timezone.now(),
+            )
 
-                # ✅ Create a new Resource for the consultant photo
-                if application.photo:
-                    from django.contrib.contenttypes.models import ContentType
+            # Safe copy of photo
+            if application.photo:
+                try:
+                    print(f"[DEBUG] Application has photo: {bool(application.photo)}")
+                    original_file = application.photo.file_path
+                    print(f"[DEBUG] Photo file path: {getattr(original_file, 'name', None)}")
+
+                    # Use FileField open or fallback to filesystem path
+                    if hasattr(original_file, 'open'):
+                        f = original_file.open('rb')
+                    else:
+                        f = open(original_file.path, 'rb')
+
                     new_photo = Resource.objects.create(
-                        file_path=application.photo.file_path,  # copies the file
+                        file_path=File(f, name=os.path.basename(original_file.name)),
                         file_meta_data=application.photo.file_meta_data.copy() if application.photo.file_meta_data else None,
                         relation_type=ContentType.objects.get_for_model(Consultant),
                         relation_id=consultant.id,
                     )
                     consultant.photo = new_photo
-                    consultant.save(update_fields=["photo"])
+                    consultant.save(update_fields=['photo'])
+                    print(f"[DEBUG] Consultant photo created: ID={new_photo.id}, URL={new_photo.file_path.url}")
+                except Exception as e:
+                    print(f"[DEBUG] Failed to copy photo: {e}")
 
-                # Update user role to 'consultant'
-                application.user.role = "consultant"
-                application.user.save(update_fields=['role'])
+            # Update user role to consultant
+            application.user.role = "consultant"
+            application.user.save(update_fields=['role'])
 
-                consultant_data = {
-                    "id": consultant.id,
-                    "user": consultant.user.email
-                }
+            consultant_data = {
+                "id": consultant.id,
+                "user": consultant.user.email
+            }
+
+        print(f"[DEBUG] Consultant created: ID={consultant.id}, user={consultant.user.email}")
 
         response_data = {
             "id": application.id,
@@ -175,54 +177,47 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
-    
 
-    
 
-    def send_application_status_email(user, application, status_value):
-        subject = "Better Consult - Consultant Application Update"
-        from_email = f"Better Consult <{getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@betterconsult.app')}>"
-        
-        if status_value == "approved":
-            status_text = "approved "
-            main_message = (
-                f"Congratulations {user.first_name or user.email}, your consultant application has been approved!"
-            )
-            extra_message = "You can now log in as a consultant and start offering your services on Better Consult."
-        else:
-            status_text = "rejected "
-            main_message = (
-                f"Hello {user.first_name or user.email}, unfortunately your consultant application has been rejected."
-            )
-            extra_message = "You may review your application and submit again if you wish."
-        
-        text_content = (
-            f"Your consultant application has been {status_text}.\n\n"
-            f"{main_message}\n\n{extra_message}\n\n— Better Consult"
-        )
+def send_application_status_email(user, application, status_value):
+    subject = "Better Consult - Consultant Application Update"
+    from_email = f"Better Consult <{getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@betterconsult.app')}>"
 
-        html_content = f"""
-        <div style="font-family: Arial, Helvetica, sans-serif; background:#f6f9fc; padding:24px;">
+    if status_value == "approved":
+        status_text = "approved"
+        main_message = f"Congratulations {user.first_name or user.email}, your consultant application has been approved!"
+        extra_message = "You can now log in as a consultant and start offering your services on Better Consult."
+    else:
+        status_text = "rejected"
+        main_message = f"Hello {user.first_name or user.email}, unfortunately your consultant application has been rejected."
+        extra_message = "You may review your application and submit again if you wish."
+
+    text_content = (
+        f"Your consultant application has been {status_text}.\n\n"
+        f"{main_message}\n\n{extra_message}\n\n— Better Consult"
+    )
+
+    html_content = f"""
+    <div style="font-family: Arial, Helvetica, sans-serif; background:#f6f9fc; padding:24px;">
         <div style="max-width:520px; margin:0 auto; background:#ffffff; border-radius:8px; box-shadow:0 2px 8px rgba(16,24,40,0.05);">
             <div style="padding:20px 24px; border-bottom:1px solid #eef2f7;">
-            <h2 style="margin:0; color:#0f172a; font-weight:700; font-size:18px;">Better Consult</h2>
+                <h2 style="margin:0; color:#0f172a; font-weight:700; font-size:18px;">Better Consult</h2>
             </div>
             <div style="padding:24px; color:#0f172a;">
-            <p style="margin:0 0 12px; font-size:16px;">{main_message}</p>
-            <div style="margin:20px 0; padding:12px 16px; background:#0ea5e9; color:#ffffff; font-weight:700; font-size:18px; border-radius:6px; display:inline-block;">
-                Status: {status_text}
-            </div>
-            <p style="margin:16px 0 0; color:#475569; font-size:14px;">{extra_message}</p>
-            <p style="margin:8px 0 0; color:#64748b; font-size:12px;">If you have questions, please contact support.</p>
+                <p style="margin:0 0 12px; font-size:16px;">{main_message}</p>
+                <div style="margin:20px 0; padding:12px 16px; background:#0ea5e9; color:#ffffff; font-weight:700; font-size:18px; border-radius:6px; display:inline-block;">
+                    Status: {status_text}
+                </div>
+                <p style="margin:16px 0 0; color:#475569; font-size:14px;">{extra_message}</p>
+                <p style="margin:8px 0 0; color:#64748b; font-size:12px;">If you have questions, please contact support.</p>
             </div>
             <div style="padding:16px 24px; border-top:1px solid #eef2f7; color:#94a3b8; font-size:12px;">
-            © Better Consult. All rights reserved.
+                © Better Consult. All rights reserved.
             </div>
         </div>
-        </div>
-        """
+    </div>
+    """
 
-        message = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
-        message.attach_alternative(html_content, "text/html")
-        message.send(fail_silently=False)
-
+    message = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
+    message.attach_alternative(html_content, "text/html")
+    message.send(fail_silently=False)

@@ -93,7 +93,9 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         try:
             # Run appropriate checks
             if file_kind == "video":
-                results = run_all_checks(file_path)
+                consultant = getattr(request.user, "consultant_profile", None)
+                reference_path = consultant.photo.file_path.path if consultant and consultant.photo else None
+                results = run_all_checks(file_path, reference_image_path=reference_path)
             else:
                 results = run_audio_checks(file_path)
 
