@@ -3,9 +3,12 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, NotFound
 from django.utils import timezone
+from django.core.mail import EmailMultiAlternatives
+from django.conf import settings
 
 from consulting.models.consultant_application import ConsultantApplication
 from consulting.models.resource import Resource
+from consulting.models.consultant import Consultant
 from consulting.serializers.consultant_application_serializer import ConsultantApplicationSerializer
 from consulting.serializers.resource_serializer import ResourceSerializer
 
@@ -83,12 +86,19 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='review')
     def review_application(self, request, pk=None):
-        """Only admin can approve/reject"""
+        """Only admin can approve/reject; only pending applications can be reviewed"""
         user = request.user
         if not hasattr(user, "role") or user.role != "admin":
             raise PermissionDenied("Only admins can review applications.")
 
         application = self.get_object()
+
+        if application.status != "pending":
+            return Response(
+                {"detail": "Cannot review application that is already reviewed."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         status_value = request.data.get("status")
         if status_value not in ["approved", "rejected"]:
             return Response(
@@ -96,12 +106,19 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Update application status
         application.status = status_value
         application.reviewed_by = user
         application.reviewed_at = timezone.now()
-        application.save()
+        application.save(update_fields=["status", "reviewed_by", "reviewed_at"])
 
-        # ✅ Automatically approve domain/subdomain if they are pending
+        # ✅ Send email notification
+        try:
+            send_application_status_email(application.user, application, status_value)
+        except Exception as e:
+            # Don’t break flow if email fails, just log or ignore
+            print(f"Failed to send email: {e}")
+        # Automatically approve pending domain/subdomain
         if status_value == "approved":
             if application.domain and application.domain.status == "pending":
                 application.domain.status = "approved"
@@ -111,11 +128,10 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                 application.sub_domain.status = "approved"
                 application.sub_domain.save(update_fields=["status"])
 
-        # If approved, create a Consultant
+        # If approved, create a new Consultant
         consultant_data = None
         if status_value == "approved":
-            if not hasattr(application.user, "consultant_profile"):
-                from consulting.models.consultant import Consultant  
+            if not Consultant.objects.filter(user=application.user).exists():
                 consultant = Consultant.objects.create(
                     user=application.user,
                     location=application.location,
@@ -129,14 +145,14 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                     validated_at=timezone.now(),
                 )
 
-                # Copy the photo if exists
+                # ✅ Create a new Resource for the consultant photo
                 if application.photo:
                     from django.contrib.contenttypes.models import ContentType
                     new_photo = Resource.objects.create(
-                        file=application.photo.file,
+                        file_path=application.photo.file_path,  # copies the file
+                        file_meta_data=application.photo.file_meta_data.copy() if application.photo.file_meta_data else None,
                         relation_type=ContentType.objects.get_for_model(Consultant),
                         relation_id=consultant.id,
-                        file_meta_data=application.photo.file_meta_data,
                     )
                     consultant.photo = new_photo
                     consultant.save(update_fields=["photo"])
@@ -159,3 +175,54 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
+    
+
+    
+
+    def send_application_status_email(user, application, status_value):
+        subject = "Better Consult - Consultant Application Update"
+        from_email = f"Better Consult <{getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@betterconsult.app')}>"
+        
+        if status_value == "approved":
+            status_text = "approved "
+            main_message = (
+                f"Congratulations {user.first_name or user.email}, your consultant application has been approved!"
+            )
+            extra_message = "You can now log in as a consultant and start offering your services on Better Consult."
+        else:
+            status_text = "rejected "
+            main_message = (
+                f"Hello {user.first_name or user.email}, unfortunately your consultant application has been rejected."
+            )
+            extra_message = "You may review your application and submit again if you wish."
+        
+        text_content = (
+            f"Your consultant application has been {status_text}.\n\n"
+            f"{main_message}\n\n{extra_message}\n\n— Better Consult"
+        )
+
+        html_content = f"""
+        <div style="font-family: Arial, Helvetica, sans-serif; background:#f6f9fc; padding:24px;">
+        <div style="max-width:520px; margin:0 auto; background:#ffffff; border-radius:8px; box-shadow:0 2px 8px rgba(16,24,40,0.05);">
+            <div style="padding:20px 24px; border-bottom:1px solid #eef2f7;">
+            <h2 style="margin:0; color:#0f172a; font-weight:700; font-size:18px;">Better Consult</h2>
+            </div>
+            <div style="padding:24px; color:#0f172a;">
+            <p style="margin:0 0 12px; font-size:16px;">{main_message}</p>
+            <div style="margin:20px 0; padding:12px 16px; background:#0ea5e9; color:#ffffff; font-weight:700; font-size:18px; border-radius:6px; display:inline-block;">
+                Status: {status_text}
+            </div>
+            <p style="margin:16px 0 0; color:#475569; font-size:14px;">{extra_message}</p>
+            <p style="margin:8px 0 0; color:#64748b; font-size:12px;">If you have questions, please contact support.</p>
+            </div>
+            <div style="padding:16px 24px; border-top:1px solid #eef2f7; color:#94a3b8; font-size:12px;">
+            © Better Consult. All rights reserved.
+            </div>
+        </div>
+        </div>
+        """
+
+        message = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
+        message.attach_alternative(html_content, "text/html")
+        message.send(fail_silently=False)
+
