@@ -9,10 +9,21 @@ def resource_file_path(instance, filename):
 
 class Consultation(models.Model):
     consultant = models.ForeignKey(Consultant, on_delete=models.CASCADE)
-    resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name="consultations")
+    resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name="consultations",null=True,blank=True)
+    
     question = models.TextField()
-    question_end = models.FloatField()
     answer = models.TextField()
-    answer_start = models.FloatField()
-    confidence_question = models.FloatField()
-    confidence_answer = models.FloatField()
+
+    start_time = models.FloatField(null=True, blank=True)
+    end_time = models.FloatField(null=True, blank=True)
+
+    confidence_question = models.FloatField(null=True,blank=True)
+    confidence_answer = models.FloatField(null=True,blank=True)
+    TYPE_CHOICES=[
+        ('audio','Audio'),
+        ('video','Video'),
+        ('text','Text'),
+    ]   
+    consultation_type = models.CharField(choices= TYPE_CHOICES,null=True,blank=True)
+
+    

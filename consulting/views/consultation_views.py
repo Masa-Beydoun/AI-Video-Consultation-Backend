@@ -2,135 +2,223 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from consulting.models import Consultation
-from consulting.serializers import ConsultationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
-from consulting.models import Resource
-from django.contrib.contenttypes.models import ContentType
-import os
-from consulting.models.consultant import Consultant
-from consulting.utils.video_checks import run_all_checks
-from consulting.permissions import IsConsultant
-from consulting.utils.segmenter_service import segment_video_into_consultations
+from rest_framework.permissions import IsAuthenticated
+
+from django.conf import settings
 from django.core.files import File
+from django.utils import timezone
+from django.contrib.contenttypes.models import ContentType
+
+from consulting.models.consultation import Consultation
+from consulting.models.resource import Resource
+from consulting.models.resource_quality_check import ResourceQualityCheck
+from consulting.serializers.consultation_serializer import ConsultationSerializer
+from consulting.permissions import IsConsultant
+from consulting.utils.file_checks import run_all_checks, run_audio_checks
+from consulting.utils.segmenter_service import segment_video_into_consultations
+
+import tempfile, os, mimetypes
+import numpy as np
 
 
-class ConsultationViewSet(viewsets.ViewSet):
-    parser_classes = [MultiPartParser, FormParser]  # Allow file upload
+class ConsultationViewSet(viewsets.ModelViewSet):
+    queryset = Consultation.objects.all()
+    serializer_class = ConsultationSerializer
+    permission_classes = [IsConsultant]
 
+    # -------------------------------
+    # 1. Default create: Q/A pair only
+    # -------------------------------
     def create(self, request):
-        # Step 1: Extract file (optional)
-        file = request.FILES.get('resource.file_path', None)
+        question = request.data.get("question")
+        answer = request.data.get("answer")
 
-        # Step 2: Create Consultation first
-        serializer = ConsultationSerializer(data=request.data)
-        if serializer.is_valid():
-            consultation = serializer.save()
+        if not (question and answer):
+            return Response(
+                {"error": "You must provide both 'question' and 'answer'"},
+                status=400,
+            )
 
-            # Step 3: If file exists, create Resource linked to consultation
-            if file:
-                Resource.objects.create(
-                    file_path=file,
-                    relation_type=ContentType.objects.get_for_model(consultation),
-                    relation_id=consultation.id,
+        consultation = Consultation.objects.create(
+            consultant=request.user.consultant_profile,
+            question=question,
+            answer=answer,
+            consultation_type="text",
+        )
+        return Response(ConsultationSerializer(consultation).data, status=201)
+
+    # -------------------------------
+    # 2. Upload endpoint (video/audio)
+    # -------------------------------
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="check-quality",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def upload(self, request):
+        uploaded_file = request.FILES.get("file")
+        if not uploaded_file:
+            return Response({"error": "'file' is required"}, status=400)
+
+        mime_type, _ = mimetypes.guess_type(uploaded_file.name)
+        if mime_type and mime_type.startswith("video"):
+            file_kind = "video"
+        elif mime_type and mime_type.startswith("audio"):
+            file_kind = "audio"
+        else:
+            return Response({"error": "Unsupported file type"}, status=400)
+
+        # Save resource with proper ContentType
+        resource = Resource.objects.create(
+            file_path=uploaded_file,
+            relation_type=ContentType.objects.get_for_model(Consultation),
+            relation_id=0,
+        )
+
+        # Create QC object and store type
+        qc = ResourceQualityCheck.objects.create(resource=resource)
+
+        # Save temp file for checks
+        tmp_file = tempfile.NamedTemporaryFile(
+            delete=False, suffix=os.path.splitext(resource.file_path.name)[1]
+        )
+        for chunk in resource.file_path.chunks():
+            tmp_file.write(chunk)
+        tmp_file.flush()
+        tmp_file.close()
+        file_path = tmp_file.name
+
+        try:
+            # Run appropriate checks
+            if file_kind == "video":
+                results = run_all_checks(file_path)
+            else:
+                results = run_audio_checks(file_path)
+
+            # Convert numpy types to native Python
+            def convert_numpy_types(obj):
+                if isinstance(obj, dict):
+                    return {k: convert_numpy_types(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_numpy_types(x) for x in obj]
+                elif isinstance(obj, (np.float32, np.float64)):
+                    return float(obj)
+                elif isinstance(obj, (np.int32, np.int64)):
+                    return int(obj)
+                else:
+                    return obj
+
+            results = convert_numpy_types(results)
+            passed = all("Too" not in str(v.get("status", "")) for v in results.values())
+
+            qc.quality_report = results
+            qc.checked_at = timezone.now()
+            qc.status = "approved" if passed else "rejected"
+            qc.save()
+
+            if passed:
+                return Response(
+                    {
+                        "status": "approved",
+                        "resource_id": resource.id,
+                        "quality_check_id": qc.id,
+                        "results": results,
+                    },
+                    status=201,
+                )
+            else:
+                resource.delete()
+                return Response(
+                    {
+                        "status": "rejected",
+                        "quality_check_id": qc.id,
+                        "results": results,
+                    },
+                    status=400,
                 )
 
-            return Response(ConsultationSerializer(consultation).data, status=201)
-        
-        return Response(serializer.errors, status=400)
-    def retrieve(self, request, pk=None):
-        try:
-            consultation = Consultation.objects.get(pk=pk)
-            serializer = ConsultationSerializer(consultation)
-            return Response(serializer.data)
-        except Consultation.DoesNotExist:
-            return Response({'error': 'Not found'}, status=404)
-
-    def update(self, request, pk=None):
-        try:
-            consultation = Consultation.objects.get(pk=pk)
-        except Consultation.DoesNotExist:
-            return Response({'error': 'Not found'}, status=404)
-
-        serializer = ConsultationSerializer(consultation, data=request.data, partial=True)
-        if serializer.is_valid():
-            updated = serializer.save()
-            return Response(ConsultationSerializer(updated).data)
-        return Response(serializer.errors, status=400)
-
-    def destroy(self, request, pk=None):
-        try:
-            consultation = Consultation.objects.get(pk=pk)
-            consultation.delete()
-            return Response(status=204)
-        except Consultation.DoesNotExist:
-            return Response({'error': 'Not found'}, status=404)
-
-    @action(detail=False, methods=['get'], url_path='by-consultant/(?P<consultant_id>[^/.]+)')
-    def by_consultant(self, request, consultant_id=None):
-        consultations = Consultation.objects.filter(consultant_id=consultant_id)
-        serializer = ConsultationSerializer(consultations, many=True)
-        return Response(serializer.data)
-
-
-
-    @action(detail=True, methods=['post'])
-    def segment(self, request, pk=None):
-        # Get approved resource by id
-        try:
-            resource = Resource.objects.get(id=pk)
-            qc = resource.quality_check
-            if qc.status != "approved":
-                return Response({"error": "Video not approved for segmentation"}, status=400)
-        except (Resource.DoesNotExist, ResourceQualityCheck.DoesNotExist):
-            return Response({"error": "Resource or quality check not found"}, status=404)
-
-        temp_files = []
-        try:
-            # Save original video temporarily
-            tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(resource.file_path.name)[1])
-            for chunk in resource.file_path.chunks():
-                tmp_video.write(chunk)
-            tmp_video.flush()
-            tmp_video.close()
-            video_path = tmp_video.name
-            temp_files.append(video_path)
-
-            # --- Run segmentation util ---
-            from consulting.utils.segmenter_service import segment_video_into_consultations
-            segments = segment_video_into_consultations(video_path)  # list of paths
-
-            # Get consultant
-            try:
-                consultant = request.user.consultant
-            except Consultant.DoesNotExist:
-                return Response({"error": "User is not linked to a consultant"}, status=400)
-
-            # Save segments
-            created_consults = []
-            for seg_path in segments:
-                with open(seg_path, "rb") as f:
-                    seg_resource = Resource.objects.create(
-                        file_path=File(f, name=os.path.basename(seg_path)),
-                        relation_type="consultation_segment",
-                        relation_id=0
-                    )
-                consultation = Consultation.objects.create(
-                    consultant=consultant,
-                    resource=seg_resource
-                )
-                created_consults.append(consultation.id)
-
-            # (Optional) delete or mark the original resource
-            resource.delete()
-
-            return Response({
-                "status": "segmented and stored successfully",
-                "consultations": created_consults
-            })
         finally:
-            for f in temp_files:  # only delete the original tmp video
-                try:
-                    os.remove(f)
-                except:
-                    pass
+            os.remove(file_path)
+
+    # -------------------------------
+    # 3. Segmentation endpoint
+    # -------------------------------
+
+
+    @action(detail=False, methods=["post"], url_path="segment-from-quality")
+    def segment_from_quality(self, request):
+        """
+        POST body: {"quality_check_id": <id>}
+        This endpoint will find the Resource via ResourceQualityCheck and create consultations from segments.
+        """
+        qc_id = request.data.get("quality_check_id")
+        if not qc_id:
+            return Response({"error": "quality_check_id is required"}, status=400)
+
+        try:
+            qc = ResourceQualityCheck.objects.select_related("resource").get(pk=qc_id)
+        except ResourceQualityCheck.DoesNotExist:
+            return Response({"error": "quality_check_id not found"}, status=404)
+
+        resource = qc.resource
+
+        # helper to get file path from Resource (robust to 'file' or 'file_path')
+        def _resource_file_path(resource):
+            file_field = getattr(resource, "file", None) or getattr(resource, "file_path", None)
+            if hasattr(file_field, "path"):
+                return file_field.path
+            if isinstance(file_field, str) and file_field:
+                return file_field
+            return None
+
+        file_path = _resource_file_path(resource)
+        if not file_path:
+            return Response({"error": "resource has no accessible file path"}, status=400)
+
+        consultant = getattr(resource, "consultant", None) or getattr(request.user, "consultant_profile", None)
+        segments = segment_video_into_consultations(file_path)
+
+        created_ids = []
+        for seg in segments:
+            with open(os.path.join(settings.MEDIA_ROOT, seg["file_path"]), "rb") as f:
+                new_res = Resource.objects.create(
+                    file_path=File(f, name=os.path.basename(seg["file_path"])),
+                    relation_type=ContentType.objects.get_for_model(Consultation),
+                    relation_id=0,  # after creating the consultation
+                )
+
+
+            new_consult = Consultation.objects.create(
+                consultant=consultant,
+                resource=new_res,
+                question=seg["question"],
+                answer=seg["answer"],
+                start_time=seg.get("start"),
+                end_time=seg.get("end"),
+            )
+            # Step 3: update the resource with the consultation id
+            new_res.relation_id = new_consult.id
+            new_res.save(update_fields=["relation_id"])
+            created_ids.append(new_consult.id)
+
+        # optionally delete original resource if desired:
+        try:
+            resource.delete(save=True)
+        except Exception:
+            pass
+
+        return Response({"consultations": created_ids}, status=201)
+
+    @action(detail=False, methods=["get"], url_path="my-role", permission_classes=[IsAuthenticated])
+    def my_role(self, request):
+        """
+        Returns the role of the authenticated user.
+        """
+        user = request.user
+        return Response({
+            "user_id": user.id,
+            "email": user.email,
+            "role": getattr(user, "role", None),
+        }, status=200)

@@ -7,3 +7,4 @@ from .subdomain import SubDomain
 from .resource import Resource
 from .consultant_application import ConsultantApplication
 from .review import Review
+from .resource_quality_check import ResourceQualityCheck
