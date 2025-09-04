@@ -269,3 +269,25 @@ def run_all_checks(video_path, reference_image_path=None):
     if reference_image_path:
         results["identity_verification"] = verify_identity(reference_image_path, video_path)
     return results
+
+def run_audio_checks(audio_path):
+    """
+    Run all available audio checks on the given file.
+    Returns a dictionary with results from each check.
+    """
+    results = {}
+    
+    # Loudness check
+    results["loudness"] = check_audio_loudness(audio_path)
+    
+    # Signal-to-noise ratio
+    results["snr"] = calculate_snr(audio_path)
+    
+    # Silence detection
+    results["silence"] = detect_silence_periods(audio_path)
+    
+    # Other audio issues (clipping, flatness, etc.)
+    results["audio_issues"] = detect_audio_issues(audio_path)
+    
+    return results
+

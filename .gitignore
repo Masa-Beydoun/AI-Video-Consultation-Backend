@@ -12,3 +12,4 @@ basic-auth-env/
 .venv/
 venv/
 secrets/
+qa_classifier

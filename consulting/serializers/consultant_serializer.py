@@ -30,7 +30,11 @@ class ConsultantSerializer(serializers.ModelSerializer):
             'validated', 'validated_by', 'validated_at',
             'added_at', 'rating', 'review_count', 'isFavorite', 'photo'
         ]
-        read_only_fields = fields  # all read-only
+        read_only_fields = [
+            'id', 'first_name', 'last_name', 'email',
+            'validated', 'validated_by', 'validated_at',
+            'added_at', 'rating', 'review_count', 'isFavorite', 'photo'
+        ]  
 
     def get_isFavorite(self, obj):
         user = self.context.get('request').user

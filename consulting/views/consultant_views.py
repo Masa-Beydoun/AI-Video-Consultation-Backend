@@ -3,7 +3,7 @@ from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-
+from rest_framework.permissions import IsAuthenticated
 from consulting.models.consultant import Consultant
 from consulting.serializers.consultant_serializer import ConsultantSerializer
 
@@ -93,3 +93,28 @@ class ConsultantViewSet(viewsets.ModelViewSet):
         consultants = Consultant.objects.order_by('-rating', '-review_count')[:20]
         serializer = self.get_serializer(consultants, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+    @action(detail=False, methods=['get', 'patch'], url_path='me', permission_classes=[IsAuthenticated])
+    def me(self, request):
+        """
+        GET: return the profile of the logged-in consultant.
+        PATCH: update the profile of the logged-in consultant.
+        """
+        try:
+            consultant = Consultant.objects.get(user=request.user)
+        except Consultant.DoesNotExist:
+            return Response(
+                {"detail": "You do not have a consultant profile."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.method == 'GET':
+            serializer = self.get_serializer(consultant)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        elif request.method == 'PATCH':
+            serializer = self.get_serializer(consultant, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
