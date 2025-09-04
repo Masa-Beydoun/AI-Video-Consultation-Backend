@@ -2,11 +2,15 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
-from .models import Message, Chat
+from .models import Message, Chat, MessageResource
 from consulting.models.consultant import Consultant
-from .serializers import MessageSerializer, ChatSerializer, ConsultantSerializer
+from consulting.models.consultation import Consultation
+from consulting.models.resource import Resource
+from .serializers import UserMessageSerializer, ChatSerializer, ConsultantSerializer, ConsultantMessageSerializer, MessageResourceSerializer
 from rest_framework.generics import ListAPIView, DestroyAPIView
 from django.core.files.storage import default_storage
+
+from .Chat_AI.full_matching import *
 
 # Ask question
 class MessageCreateView(APIView):
@@ -44,27 +48,74 @@ class MessageCreateView(APIView):
             text=text
         )
 
+        domain = consultant.domain.name
         # ---- Generate consultant reply ----
-        reply_text = self.generate_reply(user_message.text)
+        reply_text, consultation_ids = self.generate_reply(user_message.text, consultant_id, domain)
+
+        if consultation_ids:
+            text = ""
+            for consultation_id in consultation_ids:
+                consultation = Consultation.objects.get(id = consultation_id)
+                text += consultation.answer
+                text += ". "
+        else :
+            text = reply_text
 
         reply = Message.objects.create(
             chat=chat,
             sender="C",
-            text=reply_text
+            text= text
         )
-
         chat.modified_at = reply.sent_at
         chat.save(update_fields=["modified_at"])
 
+        if consultation_ids:
+            for consultation_id in consultation_ids:
+                consultation = Consultation.objects.get(id = consultation_id)
+                message_resource = MessageResource.objects.create(
+                    message = reply,
+                    resource = consultation.resource
+                )
+        
+        message_resources = MessageResource.objects.filter(message = reply)
+
         return Response({
             "chat_id": chat.id,
-            "user_message": MessageSerializer(user_message).data,
-            "consultant_message": MessageSerializer(reply).data
+            "user_message": UserMessageSerializer(user_message).data,
+            "consultant_message": ConsultantMessageSerializer(reply).data,
+            "message_resources": MessageResourceSerializer(message_resources, many = True).data
         }, status=status.HTTP_201_CREATED)
 
-    def generate_reply(self, user_text):
-        # AI system
-        return f"Auto-reply to: {user_text}"
+    def generate_reply(self, user_text, consultant_id, domain):
+
+        consultations = Consultation.objects.filter(consultant_id = consultant_id)
+        if(consultations.count() < 1):
+            return "Sorry, I don’t have an exact answer, but I can connect you with a consultant."
+        
+        # convert QuerySet → list of dicts for faq_matcher
+        faqs = [
+            {
+                "question": c.question,
+                "answer": c.answer,
+                "domain": domain, 
+                "consultant_id": c.consultant.id,
+                "consultation_id": c.id,
+            }
+            for c in consultations
+        ]
+
+        faq_handler = MultiQuestionHandler(faqs)
+
+        result = faq_handler.process(user_text, domain = domain)
+        
+        consultation_ids = []
+        for r in result["results"]:
+            if r["match"]["matched"]:
+                consultation_ids.append(r["match"]["main"]["id"])
+
+        if result["results"] and result["results"][0]["match"]["matched"]:
+            return result["results"][0]["match"]["main"]["answer"], consultation_ids
+        return "Sorry, I don’t have an exact answer, but I can connect you with a consultant."
 
 
 # All chats
@@ -91,7 +142,7 @@ class ConsultantChatMessagesView(APIView):
             return Response({"error": "No chat found with this consultant."}, status=status.HTTP_404_NOT_FOUND)
 
         messages = Message.objects.filter(chat=chat).order_by("-sent_at")
-        serializer = MessageSerializer(messages, many=True)
+        serializer = UserMessageSerializer(messages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
