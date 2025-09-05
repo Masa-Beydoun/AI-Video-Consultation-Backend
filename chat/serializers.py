@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Message
 from .models import Chat
 from .models import MessageResource
+from .models import WaitingQuestion
 from consulting.models.consultant import Consultant
 from consulting.models.user import User
 from consulting.models.domain import Domain
@@ -71,3 +72,12 @@ class ChatinMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chat
         fields = ['id', 'title', 'created_at', 'modified_at']
+
+class WaitingQuestionSerializer(serializers.ModelSerializer):
+
+    consultant = ConsultantSerializer()
+    user = UserSerializer()
+
+    class Meta:
+        model = WaitingQuestion
+        fields = '__all__'
