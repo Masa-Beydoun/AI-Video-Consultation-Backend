@@ -3,6 +3,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 
+from notifications.firebase import send_notification_to_user
+
 from django.utils import timezone
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
@@ -105,6 +107,30 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
             send_application_status_email(application.user, application, status_value)
         except Exception as e:
             print(f"Failed to send email: {e}")
+
+        # After sending the email
+        try:
+            send_application_status_email(application.user, application, status_value)
+        except Exception as e:
+            print(f"Failed to send email: {e}")
+
+        # Send push notification
+        try:
+            title = "Consultant Application Update"
+            if status_value == "approved":
+                body = "Congratulations! Your application has been approved."
+            else:
+                body = "Your consultant application has been rejected."
+
+            data = {
+                "type": "consultant_application",
+                "application_id": str(application.id),
+                "status": status_value
+            }
+
+            send_notification_to_user(application.user, title, body, data)
+        except Exception as e:
+            print(f"Failed to send push notification: {e}")
 
         # Automatically approve pending domain/subdomain
         if status_value == "approved":
