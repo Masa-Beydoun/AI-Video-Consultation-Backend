@@ -65,3 +65,9 @@ class ChatSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chat
         fields = ['id', 'title', 'consultant', 'created_at', 'modified_at']
+
+class ChatinMessageSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Chat
+        fields = ['id', 'title', 'created_at', 'modified_at']

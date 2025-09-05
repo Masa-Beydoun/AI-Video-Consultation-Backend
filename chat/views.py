@@ -6,11 +6,12 @@ from .models import Message, Chat, MessageResource
 from consulting.models.consultant import Consultant
 from consulting.models.consultation import Consultation
 from consulting.models.resource import Resource
-from .serializers import UserMessageSerializer, ChatSerializer, ConsultantSerializer, ConsultantMessageSerializer, MessageResourceSerializer
+from .serializers import UserMessageSerializer, ChatSerializer, ConsultantSerializer, ConsultantMessageSerializer, MessageResourceSerializer, ChatinMessageSerializer
 from rest_framework.generics import ListAPIView, DestroyAPIView
 from django.core.files.storage import default_storage
 
 from .Chat_AI.full_matching import *
+from .Chat_AI.Chat_Title import *
 
 # Ask question
 class MessageCreateView(APIView):
@@ -91,10 +92,18 @@ class MessageCreateView(APIView):
                     resource = consultation.resource
                 )
         
+        chat_messages = []
+        messages = Message.objects.filter(chat=chat).order_by("sent_at")
+        for message in messages :
+            chat_messages.append(message.text)
+        title = generate_chat_title(chat_messages = chat_messages)
+        chat.title = title
+        chat.save(update_fields=["title"])
+        
         message_resources = MessageResource.objects.filter(message = reply)
 
         return Response({
-            "chat_id": chat.id,
+            "chat": ChatinMessageSerializer(chat).data,
             "user_message": UserMessageSerializer(user_message).data,
             "consultant_message": ConsultantMessageSerializer(reply).data,
             "message_resources": MessageResourceSerializer(message_resources, many = True).data
