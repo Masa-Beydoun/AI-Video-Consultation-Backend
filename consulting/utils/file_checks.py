@@ -1,9 +1,93 @@
 # consulting/utils/video_checks.py
-import os
 import numpy as np
 import cv2
 from pydub import AudioSegment, silence
 import librosa
+from deepface import DeepFace
+import os
+from moviepy import VideoFileClip
+import tempfile
+
+
+
+class FaceVerificationSystem:
+    def __init__(self, model_name: str = "Facenet", similarity_threshold: float = 0.6):
+        self.model_name = model_name
+        self.similarity_threshold = similarity_threshold
+        self.photo_embedding = None
+
+    def preprocess_photo(self, photo_path: str):
+        self.photo_embedding = DeepFace.represent(
+            img_path=photo_path,
+            model_name=self.model_name,
+            detector_backend="retinaface",
+            enforce_detection=True
+        )[0]["embedding"]
+
+    def cosine_similarity(self, vec1, vec2):
+        v1, v2 = np.array(vec1), np.array(vec2)
+        return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
+    def best_orientation_similarity(self, frame: np.ndarray) -> float:
+        rotations = [
+            frame,
+            cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE),
+            cv2.rotate(frame, cv2.ROTATE_180),
+            cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        ]
+        for i, rotated in enumerate(rotations):
+            try:
+                result = DeepFace.represent(
+                    img_path=rotated,
+                    model_name=self.model_name,
+                    detector_backend="retinaface",
+                    enforce_detection=True
+                )
+                emb = result[0]["embedding"]
+                sim = self.cosine_similarity(self.photo_embedding, emb)
+                if sim >= self.similarity_threshold or i == len(rotations) - 1:
+                    return sim
+            except Exception as e:
+                print(f"[WARN] DeepFace failed on {i*90}°: {e}")
+        return -1
+
+    def verify_identity(self, photo_path: str, video_path: str, max_frames=10):
+        if self.photo_embedding is None:
+            self.preprocess_photo(photo_path)
+
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return {"error": "Could not open video"}
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        frame_interval = max(1, total_frames // max_frames)
+        sims, matches, processed = [], 0, 0
+        idx = 0
+
+        while cap.isOpened() and processed < max_frames:
+            ret, frame = cap.read()
+            if not ret: break
+            if idx % frame_interval == 0:
+                sim = self.best_orientation_similarity(frame)
+                if sim >= 0:
+                    sims.append(sim)
+                    if sim >= self.similarity_threshold:
+                        matches += 1
+                processed += 1
+            idx += 1
+        cap.release()
+
+        if not sims:
+            return {"status": "no_faces_detected"}
+
+        return {
+            "verified": (np.mean(sims) >= self.similarity_threshold and matches / len(sims) >= 0.3),
+            "confidence": float((np.mean(sims) + np.max(sims)) / 2),
+            "frames_processed": processed,
+            "matches": matches,
+            "max_similarity": float(np.max(sims)),
+            "avg_similarity": float(np.mean(sims)),
+        }
 
 def _safe_load_audio(path):
     try:
@@ -97,7 +181,7 @@ def detect_black_screen(path, sample_rate=30, black_threshold=0.6):
     except Exception as e:
         return {"error": str(e)}
 
-def detect_blurriness(path, sample_rate=30, blurry_threshold=100.0):
+def detect_blurriness(path, sample_rate=30, blurry_threshold=50.0):
     try:
         cap = cv2.VideoCapture(path)
         if not cap.isOpened(): return {"error": "Could not open video"}
@@ -143,70 +227,11 @@ def check_frame_rate(path, min_fps=24):
     except Exception as e:
         return {"error": str(e)}
 
-# ---------------- Face / Identity Checks ----------------
-def _extract_first_face(video_path, output_image_path="temp_face.jpg",
-                        max_frames=2000, frame_step=2, detector_backends=None, min_laplacian_var=100):
-    """
-    Extract the first detectable non-blurry face from a video.
-    Returns (True, path_to_face_image) if successful, else (False, None)
-    """
-    detector_backends = detector_backends or ["mtcnn","opencv","ssd"]
-    try:
-        from deepface.commons import functions
-    except:
-        return (False, "DeepFace commons not available")
-    
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened(): return (False, f"Cannot open video: {video_path}")
-    
-    frame_index, face_saved = 0, False
-    while cap.isOpened() and frame_index < max_frames:
-        ret, frame = cap.read()
-        if not ret: break
-        if frame_index % frame_step == 0:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if cv2.Laplacian(gray, cv2.CV_64F).var() < min_laplacian_var:
-                frame_index += 1
-                continue  # skip blurry frames
-            small_frame = cv2.resize(frame, (0,0), fx=0.5, fy=0.5)
-            for backend in detector_backends:
-                try:
-                    face_img = functions.detectFace(small_frame, detector_backend=backend)
-                    if face_img is not None:
-                        cv2.imwrite(output_image_path, face_img)
-                        face_saved = True
-                        break
-                except Exception:
-                    continue
-            if face_saved: break
-        frame_index += 1
-    cap.release()
-    return (face_saved, output_image_path if face_saved else None)
 
 def verify_identity(reference_image_path, video_path):
-    try:
-        from deepface import DeepFace
-    except:
-        return {"error": "DeepFace not available"}
-    
-    ok, face_path = _extract_first_face(video_path)
-    if not ok: return {"status": "could_not_extract_face"}
-    
-    try:
-        result = DeepFace.verify(
-            img1_path=reference_image_path,
-            img2_path=face_path,
-            model_name="Facenet",
-            enforce_detection=False
-        )
-        verified = result.get("verified", False)
-        distance = result.get("distance")
-        threshold = result.get("threshold")
-        try: os.remove(face_path)
-        except: pass
-        return {"verified": bool(verified), "distance": distance, "threshold": threshold}
-    except Exception as e:
-        return {"error": str(e)}
+    verifier = FaceVerificationSystem(model_name="Facenet", similarity_threshold=0.6)
+    return verifier.verify_identity(reference_image_path, video_path)
+
 
 def detect_face_consistency(video_path, sample_rate=30, min_detection_ratio=0.7):
     try:
@@ -231,19 +256,58 @@ def detect_face_consistency(video_path, sample_rate=30, min_detection_ratio=0.7)
     return {"detection_ratio": round(ratio,3), "status": status}
 
 # ---------------- Run All Checks ----------------
+
 def run_all_checks(video_path, reference_image_path=None):
     results = {}
-    results["audio_loudness"] = check_audio_loudness(video_path)
-    results["snr"] = calculate_snr(video_path)
-    results["audio_issues"] = detect_audio_issues(video_path)
-    results["silence"] = detect_silence_periods(video_path)
+    audio_path = None
+
+    # 1) Extract audio to a temp .wav safely
+    try:
+        clip = VideoFileClip(video_path)
+        if clip.audio:
+            tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+            audio_path = tmp_audio.name
+            tmp_audio.close()
+            clip.audio.write_audiofile(audio_path, codec="pcm_s16le", logger=None)
+    except Exception as e:
+        results["audio_extract"] = {"error": f"Could not extract audio: {e}"}
+    finally:
+        # Ensure clip is closed
+        try:
+            clip.close()
+        except Exception:
+            pass
+
+    # 2) Run audio checks only if audio was successfully extracted
+    if audio_path and os.path.exists(audio_path):
+        try:
+            results["audio_loudness"] = check_audio_loudness(audio_path)
+            results["snr"] = calculate_snr(audio_path)
+            results["audio_issues"] = detect_audio_issues(audio_path)
+            results["silence"] = detect_silence_periods(audio_path)
+        finally:
+            # Always clean up temp audio file
+            try:
+                os.remove(audio_path)
+            except Exception as e:
+                print(f"[WARN] Could not delete temp audio file {audio_path}: {e}")
+    else:
+        results["audio_checks"] = {"status": "No audio track detected"}
+
+    # 3) Video checks
     results["black_screen"] = detect_black_screen(video_path)
     results["blurriness"] = detect_blurriness(video_path)
     results["resolution"] = check_resolution(video_path)
     results["frame_rate"] = check_frame_rate(video_path)
     results["face_consistency"] = detect_face_consistency(video_path)
+
+    # 4) Identity verification (if reference photo provided)
     if reference_image_path:
-        results["identity_verification"] = verify_identity(reference_image_path, video_path)
+        try:
+            results["identity_verification"] = verify_identity(reference_image_path, video_path)
+        except Exception as e:
+            results["identity_verification"] = {"error": str(e)}
+
     return results
 
 def run_audio_checks(audio_path):
@@ -255,4 +319,6 @@ def run_audio_checks(audio_path):
     results["audio_issues"] = detect_audio_issues(audio_path)
     
     return results
+
+# inside video_checks.py
 

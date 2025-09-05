@@ -1,4 +1,4 @@
-# consultations/views.py
+# consultations_views.py
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -94,7 +94,24 @@ class ConsultationViewSet(viewsets.ModelViewSet):
             # Run appropriate checks
             if file_kind == "video":
                 consultant = getattr(request.user, "consultant_profile", None)
-                reference_path = consultant.photo.file_path.path if consultant and consultant.photo else None
+                reference_path = None
+
+                # Handle reference image path
+                if consultant and consultant.photo:
+                    try:
+                        if hasattr(consultant.photo, 'file_path'):
+                            reference_path = consultant.photo.file_path.path
+                        elif hasattr(consultant.photo, 'path'):
+                            reference_path = consultant.photo.path
+                        elif hasattr(consultant.photo, 'url'):
+                            reference_path = consultant.photo.url
+                        if reference_path and not os.path.exists(reference_path):
+                            print(f"[WARN] Reference image not found at {reference_path}")
+                            reference_path = None
+                    except Exception as e:
+                        print(f"[WARN] Could not access reference image: {e}")
+                        reference_path = None
+
                 results = run_all_checks(file_path, reference_image_path=reference_path)
             else:
                 results = run_audio_checks(file_path)
@@ -113,48 +130,53 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                     return obj
 
             results = convert_numpy_types(results)
-            passed = all("Too" not in str(v.get("status", "")) for v in results.values())
+
+            # Updated quality assessment logic
+            failed_checks = []
+            for check_name, check_result in results.items():
+                if isinstance(check_result, dict):
+                    status = check_result.get("status", "")
+                    if "Too" in str(status) or "not" in str(status).lower() or "error" in check_result:
+                        failed_checks.append(check_name)
+                    if check_name == "identity_verification":
+                        if not check_result.get("verified", False) and "error" not in check_result:
+                            failed_checks.append("identity_not_verified")
+
+            passed = len(failed_checks) == 0
 
             qc.quality_report = results
             qc.checked_at = timezone.now()
             qc.status = "approved" if passed else "rejected"
             qc.save()
 
+            response_data = {
+                "status": "approved" if passed else "rejected",
+                "resource_id": resource.id,
+                "quality_check_id": qc.id,
+                "results": results,
+            }
+
+            if failed_checks:
+                response_data["failed_checks"] = failed_checks
+
             if passed:
-                return Response(
-                    {
-                        "status": "approved",
-                        "resource_id": resource.id,
-                        "quality_check_id": qc.id,
-                        "results": results,
-                    },
-                    status=201,
-                )
+                return Response(response_data, status=201)
             else:
                 resource.delete()
-                return Response(
-                    {
-                        "status": "rejected",
-                        "quality_check_id": qc.id,
-                        "results": results,
-                    },
-                    status=400,
-                )
+                return Response(response_data, status=400)
 
         finally:
-            os.remove(file_path)
+            # Ensure file is closed and removed safely
+            try:
+                os.remove(file_path)
+            except PermissionError:
+                print(f"[WARN] Could not delete temp file {file_path}, still in use.")
 
     # -------------------------------
     # 3. Segmentation endpoint
     # -------------------------------
-
-
     @action(detail=False, methods=["post"], url_path="segment-from-quality")
     def segment_from_quality(self, request):
-        """
-        POST body: {"quality_check_id": <id>}
-        This endpoint will find the Resource via ResourceQualityCheck and create consultations from segments.
-        """
         qc_id = request.data.get("quality_check_id")
         if not qc_id:
             return Response({"error": "quality_check_id is required"}, status=400)
@@ -166,61 +188,9 @@ class ConsultationViewSet(viewsets.ModelViewSet):
 
         resource = qc.resource
 
-        # helper to get file path from Resource (robust to 'file' or 'file_path')
         def _resource_file_path(resource):
             file_field = getattr(resource, "file", None) or getattr(resource, "file_path", None)
             if hasattr(file_field, "path"):
                 return file_field.path
             if isinstance(file_field, str) and file_field:
                 return file_field
-            return None
-
-        file_path = _resource_file_path(resource)
-        if not file_path:
-            return Response({"error": "resource has no accessible file path"}, status=400)
-
-        consultant = getattr(resource, "consultant", None) or getattr(request.user, "consultant_profile", None)
-        segments = segment_video_into_consultations(file_path)
-
-        created_ids = []
-        for seg in segments:
-            with open(os.path.join(settings.MEDIA_ROOT, seg["file_path"]), "rb") as f:
-                new_res = Resource.objects.create(
-                    file_path=File(f, name=os.path.basename(seg["file_path"])),
-                    relation_type=ContentType.objects.get_for_model(Consultation),
-                    relation_id=0,  # after creating the consultation
-                )
-
-
-            new_consult = Consultation.objects.create(
-                consultant=consultant,
-                resource=new_res,
-                question=seg["question"],
-                answer=seg["answer"],
-                start_time=seg.get("start"),
-                end_time=seg.get("end"),
-            )
-            # Step 3: update the resource with the consultation id
-            new_res.relation_id = new_consult.id
-            new_res.save(update_fields=["relation_id"])
-            created_ids.append(new_consult.id)
-
-        # optionally delete original resource if desired:
-        try:
-            resource.delete(save=True)
-        except Exception:
-            pass
-
-        return Response({"consultations": created_ids}, status=201)
-
-    @action(detail=False, methods=["get"], url_path="my-role", permission_classes=[IsAuthenticated])
-    def my_role(self, request):
-        """
-        Returns the role of the authenticated user.
-        """
-        user = request.user
-        return Response({
-            "user_id": user.id,
-            "email": user.email,
-            "role": getattr(user, "role", None),
-        }, status=200)
