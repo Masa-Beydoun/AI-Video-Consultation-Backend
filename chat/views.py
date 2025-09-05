@@ -2,18 +2,24 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
-from .models import Message, Chat
+from .models import Message, Chat, MessageResource
 from consulting.models.consultant import Consultant
-from .serializers import MessageSerializer, ChatSerializer, ConsultantSerializer
+from consulting.models.consultation import Consultation
+from consulting.models.resource import Resource
+from .serializers import UserMessageSerializer, ChatSerializer, ConsultantSerializer, ConsultantMessageSerializer, MessageResourceSerializer, ChatinMessageSerializer
 from rest_framework.generics import ListAPIView, DestroyAPIView
 from django.core.files.storage import default_storage
+
+from .Chat_AI.full_matching import *
+from .Chat_AI.Chat_Title import *
+from .Chat_AI.summarization import *
 
 # Ask question
 class MessageCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        user = request.user  # from auth token
+        user = request.user
 
         consultant_id = request.data.get("consultant_id")
         text = request.data.get("text")
@@ -37,6 +43,20 @@ class MessageCreateView(APIView):
             defaults={"title": f"Chat with {consultant}"}
         )
 
+        history = []
+        messages = Message.objects.filter(chat=chat).order_by("sent_at")
+
+        current = None
+        for message in messages:
+            if message.sender == "U":
+                current = {"question": message.text, "answer": None, "entities": {}}
+            else :
+                if current:
+                    current["answer"] = message.text
+                    history.append(current)
+                    current = None
+
+
         # Save user message
         user_message = Message.objects.create(
             chat=chat,
@@ -44,27 +64,111 @@ class MessageCreateView(APIView):
             text=text
         )
 
-        # ---- Generate consultant reply ----
-        reply_text = self.generate_reply(user_message.text)
+        domain = consultant.domain.name
+        # Find consultant reply
+        reply_text, consultation_ids = self.generate_reply(user_message.text, consultant_id, domain, history)
+
+        if consultation_ids:
+            text = ""
+            for consultation_id in consultation_ids:
+                consultation = Consultation.objects.get(id = consultation_id)
+                text += consultation.answer
+                text += ". "
+        else :
+            text = reply_text
 
         reply = Message.objects.create(
             chat=chat,
             sender="C",
-            text=reply_text
+            text= text
         )
-
         chat.modified_at = reply.sent_at
         chat.save(update_fields=["modified_at"])
 
-        return Response({
-            "chat_id": chat.id,
-            "user_message": MessageSerializer(user_message).data,
-            "consultant_message": MessageSerializer(reply).data
-        }, status=status.HTTP_201_CREATED)
+        if consultation_ids:
+            for consultation_id in consultation_ids:
+                consultation = Consultation.objects.get(id = consultation_id)
+                message_resource = MessageResource.objects.create(
+                    message = reply,
+                    resource = consultation.resource
+                )
+        
+        # Chat Title
+        chat_messages = []
+        messages = Message.objects.filter(chat=chat).order_by("sent_at")
+        for message in messages :
+            chat_messages.append(message.text)
+        title = generate_chat_title(chat_messages = chat_messages)
+        chat.title = title
+        chat.save(update_fields=["title"])
 
-    def generate_reply(self, user_text):
-        # AI system
-        return f"Auto-reply to: {user_text}"
+        # Answer Summary
+        summary = summarize_text(reply.text, 1)
+        reply.summary = summary
+        reply.save(update_fields=["summary"])
+        
+        message_resources = MessageResource.objects.filter(message = reply)
+
+        if consultation_ids :
+            return Response({
+                "chat": ChatinMessageSerializer(chat).data,
+                "user_message": UserMessageSerializer(user_message).data,
+                "consultant_message": ConsultantMessageSerializer(reply).data,
+                "message_resources": MessageResourceSerializer(message_resources, many = True).data
+            }, status=status.HTTP_201_CREATED)
+        else :
+            consultants = Consultant.objects.all()
+            answered_consultants = []
+            for consultant in consultants:
+                domain = consultant.domain.name
+                reply_text, consultation_ids = self.generate_reply(user_message.text, consultant.id, domain, history=[])
+                if consultation_ids :
+                    answered_consultants.append(consultant)
+            if answered_consultants :
+                return Response({
+                "chat": ChatinMessageSerializer(chat).data,
+                "user_message": UserMessageSerializer(user_message).data,
+                "consultant_message": ConsultantMessageSerializer(reply).data,
+                "answered_consultants": ConsultantSerializer(answered_consultants, many = True).data
+                }, status=status.HTTP_201_CREATED)
+            else :
+                return Response({
+                "chat": ChatinMessageSerializer(chat).data,
+                "user_message": UserMessageSerializer(user_message).data,
+                "consultant_message": ConsultantMessageSerializer(reply).data,
+                "message": f"Nobody answered this question: '{user_message.text}'"
+                }, status=status.HTTP_201_CREATED)
+
+
+    def generate_reply(self, user_text, consultant_id, domain, history = []):
+
+        consultations = Consultation.objects.filter(consultant_id = consultant_id)
+        if(consultations.count() < 1):
+            return "Sorry, I don’t have an exact answer, but I can connect you with a consultant."
+        
+        faqs = [
+            {
+                "question": c.question,
+                "answer": c.answer,
+                "domain": domain, 
+                "consultant_id": c.consultant.id,
+                "consultation_id": c.id,
+            }
+            for c in consultations
+        ]
+
+        faq_handler = MultiQuestionHandler(faqs)
+
+        result = faq_handler.process(user_text, domain=domain, history=history)
+        
+        consultation_ids = []
+        for r in result["results"]:
+            if r["match"]["matched"]:
+                consultation_ids.append(r["match"]["main"]["id"])
+
+        if result["results"] and result["results"][0]["match"]["matched"]:
+            return result["results"][0]["match"]["main"]["answer"], consultation_ids
+        return "Sorry, I don’t have an exact answer, but I can connect you with a consultant.", []
 
 
 # All chats
@@ -91,7 +195,7 @@ class ConsultantChatMessagesView(APIView):
             return Response({"error": "No chat found with this consultant."}, status=status.HTTP_404_NOT_FOUND)
 
         messages = Message.objects.filter(chat=chat).order_by("-sent_at")
-        serializer = MessageSerializer(messages, many=True)
+        serializer = UserMessageSerializer(messages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -131,14 +235,38 @@ class QuestionConsultantsView(APIView):
             return Response({"error": "Question is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         consultants = Consultant.objects.all()
+        answered_consultants = []
+        for consultant in consultants:
+            domain = consultant.domain.name
+            consultations = Consultation.objects.filter(consultant = consultant)
+            if consultations.count() > 0 :
 
-        if not consultants.exists():
+                faqs = [
+                    {
+                        "question": c.question,
+                        "answer": c.answer,
+                        "domain": domain, 
+                        "consultant_id": c.consultant.id,
+                        "consultation_id": c.id,
+                    }
+                    for c in consultations
+                ]
+
+                faq_handler = MultiQuestionHandler(faqs)
+
+                result = faq_handler.process(question, domain=domain, history=[])
+
+                if result["results"] and result["results"][0]["match"]["matched"]:
+                    answered_consultants.append(consultant)
+
+
+        if not answered_consultants:
             return Response(
                 {"message": f"Nobody answered this question: '{question}'"},
                 status=status.HTTP_200_OK
             )
 
-        serializer = ConsultantSerializer(consultants, many=True)
+        serializer = ConsultantSerializer(answered_consultants, many=True)
         return Response({
             "question": question,
             "consultants": serializer.data
