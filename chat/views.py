@@ -19,7 +19,7 @@ class MessageCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        user = request.user  # from auth token
+        user = request.user
 
         consultant_id = request.data.get("consultant_id")
         text = request.data.get("text")
@@ -65,7 +65,7 @@ class MessageCreateView(APIView):
         )
 
         domain = consultant.domain.name
-        # ---- Generate consultant reply ----
+        # Find consultant reply
         reply_text, consultation_ids = self.generate_reply(user_message.text, consultant_id, domain, history)
 
         if consultation_ids:
@@ -93,6 +93,7 @@ class MessageCreateView(APIView):
                     resource = consultation.resource
                 )
         
+        # Chat Title
         chat_messages = []
         messages = Message.objects.filter(chat=chat).order_by("sent_at")
         for message in messages :
@@ -101,18 +102,43 @@ class MessageCreateView(APIView):
         chat.title = title
         chat.save(update_fields=["title"])
 
+        # Answer Summary
         summary = summarize_text(reply.text, 1)
         reply.summary = summary
         reply.save(update_fields=["summary"])
         
         message_resources = MessageResource.objects.filter(message = reply)
 
-        return Response({
-            "chat": ChatinMessageSerializer(chat).data,
-            "user_message": UserMessageSerializer(user_message).data,
-            "consultant_message": ConsultantMessageSerializer(reply).data,
-            "message_resources": MessageResourceSerializer(message_resources, many = True).data
-        }, status=status.HTTP_201_CREATED)
+        if consultation_ids :
+            return Response({
+                "chat": ChatinMessageSerializer(chat).data,
+                "user_message": UserMessageSerializer(user_message).data,
+                "consultant_message": ConsultantMessageSerializer(reply).data,
+                "message_resources": MessageResourceSerializer(message_resources, many = True).data
+            }, status=status.HTTP_201_CREATED)
+        else :
+            consultants = Consultant.objects.all()
+            answered_consultants = []
+            for consultant in consultants:
+                domain = consultant.domain.name
+                reply_text, consultation_ids = self.generate_reply(user_message.text, consultant.id, domain, history=[])
+                if consultation_ids :
+                    answered_consultants.append(consultant)
+            if answered_consultants :
+                return Response({
+                "chat": ChatinMessageSerializer(chat).data,
+                "user_message": UserMessageSerializer(user_message).data,
+                "consultant_message": ConsultantMessageSerializer(reply).data,
+                "answered_consultants": ConsultantSerializer(answered_consultants, many = True).data
+                }, status=status.HTTP_201_CREATED)
+            else :
+                return Response({
+                "chat": ChatinMessageSerializer(chat).data,
+                "user_message": UserMessageSerializer(user_message).data,
+                "consultant_message": ConsultantMessageSerializer(reply).data,
+                "message": f"Nobody answered this question: '{user_message.text}'"
+                }, status=status.HTTP_201_CREATED)
+
 
     def generate_reply(self, user_text, consultant_id, domain, history = []):
 
@@ -120,7 +146,6 @@ class MessageCreateView(APIView):
         if(consultations.count() < 1):
             return "Sorry, I don’t have an exact answer, but I can connect you with a consultant."
         
-        # convert QuerySet → list of dicts for faq_matcher
         faqs = [
             {
                 "question": c.question,
@@ -210,14 +235,38 @@ class QuestionConsultantsView(APIView):
             return Response({"error": "Question is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         consultants = Consultant.objects.all()
+        answered_consultants = []
+        for consultant in consultants:
+            domain = consultant.domain.name
+            consultations = Consultation.objects.filter(consultant = consultant)
+            if consultations.count() > 0 :
 
-        if not consultants.exists():
+                faqs = [
+                    {
+                        "question": c.question,
+                        "answer": c.answer,
+                        "domain": domain, 
+                        "consultant_id": c.consultant.id,
+                        "consultation_id": c.id,
+                    }
+                    for c in consultations
+                ]
+
+                faq_handler = MultiQuestionHandler(faqs)
+
+                result = faq_handler.process(question, domain=domain, history=[])
+
+                if result["results"] and result["results"][0]["match"]["matched"]:
+                    answered_consultants.append(consultant)
+
+
+        if not answered_consultants:
             return Response(
                 {"message": f"Nobody answered this question: '{question}'"},
                 status=status.HTTP_200_OK
             )
 
-        serializer = ConsultantSerializer(consultants, many=True)
+        serializer = ConsultantSerializer(answered_consultants, many=True)
         return Response({
             "question": question,
             "consultants": serializer.data
