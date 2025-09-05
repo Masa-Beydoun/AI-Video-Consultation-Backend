@@ -194,3 +194,24 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                 return file_field.path
             if isinstance(file_field, str) and file_field:
                 return file_field
+            return None
+
+        file_path = _resource_file_path(resource)
+        if not file_path:
+            return Response({"error": "Could not resolve file path"}, status=500)
+
+        # 🔹 Call your segmentation utility
+        try:
+            segments = segment_video_into_consultations(file_path, model_dir="./qa_classifier")
+
+            return Response(
+                {
+                    "ok": True,
+                    "quality_check_id": qc.id,
+                    "segments": segments,
+                },
+                status=200,
+            )
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)

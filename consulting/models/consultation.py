@@ -14,11 +14,10 @@ class Consultation(models.Model):
     question = models.TextField()
     answer = models.TextField()
 
-    start_time = models.FloatField(null=True, blank=True)
-    end_time = models.FloatField(null=True, blank=True)
 
     confidence_question = models.FloatField(null=True,blank=True)
     confidence_answer = models.FloatField(null=True,blank=True)
+
     TYPE_CHOICES=[
         ('audio','Audio'),
         ('video','Video'),
