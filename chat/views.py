@@ -152,7 +152,7 @@ class MessageCreateView(APIView):
 
         consultations = Consultation.objects.filter(consultant_id = consultant_id)
         if(consultations.count() < 1):
-            return "Sorry, I don’t have an exact answer, but I can connect you with a consultant."
+            return "Sorry, I don’t have an exact answer, but I can connect you with a consultant.",[]
         
         faqs = [
             {
@@ -333,7 +333,7 @@ class WaitingQuestionView(APIView):
             }, status= status.HTTP_200_OK)
         
         return Response({
-            "waiting_questions": WaitingQuestionSerializer(waitingQuestions, many = True)
+            "waiting_questions": WaitingQuestionSerializer(waitingQuestions, many = True).data
         })
 
 class QuestionDeleteView(APIView):
@@ -348,11 +348,16 @@ class QuestionDeleteView(APIView):
             )
 
         try:
-            waiting_question = WaitingQuestion.objects.get(id=waiting_question_id, user=request.user)
+            waiting_question = WaitingQuestion.objects.get(id=waiting_question_id)
         except WaitingQuestion.DoesNotExist:
             return Response(
                 {"error": "WaitingQuestion not found"},
                 status=status.HTTP_404_NOT_FOUND
+            )
+        if waiting_question.consultant.user != request.user :
+            return Response(
+                {"error": "You don't have permission to delete this question"},
+                status=status.HTTP_403_FORBIDDEN
             )
 
         waiting_question.delete()
