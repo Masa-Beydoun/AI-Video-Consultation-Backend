@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
-from .models import Message, Chat, MessageResource
+from .models import Message, Chat, MessageResource, WaitingQuestion
 from consulting.models.consultant import Consultant
 from consulting.models.consultation import Consultation
 from consulting.models.resource import Resource
@@ -117,6 +117,14 @@ class MessageCreateView(APIView):
                 "message_resources": MessageResourceSerializer(message_resources, many = True).data
             }, status=status.HTTP_201_CREATED)
         else :
+
+            # Waiting Question
+            WaitingQuestion.objects.create(
+            user = user,
+            consultant = consultant,
+            question = user_message.text
+            )
+
             consultants = Consultant.objects.all()
             answered_consultants = []
             for consultant in consultants:
