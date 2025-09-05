@@ -6,7 +6,7 @@ from .models import Message, Chat, MessageResource, WaitingQuestion
 from consulting.models.consultant import Consultant
 from consulting.models.consultation import Consultation
 from consulting.models.resource import Resource
-from .serializers import UserMessageSerializer, ChatSerializer, ConsultantSerializer, ConsultantMessageSerializer, MessageResourceSerializer, ChatinMessageSerializer
+from .serializers import UserMessageSerializer, ChatSerializer, ConsultantSerializer, ConsultantMessageSerializer, MessageResourceSerializer, ChatinMessageSerializer, WaitingQuestionSerializer
 from rest_framework.generics import ListAPIView, DestroyAPIView
 from django.core.files.storage import default_storage
 
@@ -313,5 +313,52 @@ class VoiceToTextView(APIView):
     
     def voice_transcription(self, audio_file):
         return "This is a dummy transcription of the voice."
+    
+# Waiting Questions List
+class WaitingQuestionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        consultant = Consultant.objects.filter(user = user).first()
+        if not consultant :
+            return Response({
+                "message": "You don't have permession"
+            }, status= status.HTTP_403_FORBIDDEN)
+        
+        waitingQuestions = WaitingQuestion.objects.filter(consultant = consultant)
+        if not waitingQuestions :
+            return Response({
+                "message": "You don't have any waiting questions"
+            }, status= status.HTTP_200_OK)
+        
+        return Response({
+            "waiting_questions": WaitingQuestionSerializer(waitingQuestions, many = True)
+        })
+
+class QuestionDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, *args, **kwargs):
+        waiting_question_id = request.data.get("waiting_question_id")
+        if not waiting_question_id:
+            return Response(
+                {"error": "waiting_question_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            waiting_question = WaitingQuestion.objects.get(id=waiting_question_id, user=request.user)
+        except WaitingQuestion.DoesNotExist:
+            return Response(
+                {"error": "WaitingQuestion not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        waiting_question.delete()
+        return Response(
+            {"message": "WaitingQuestion deleted successfully"},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 
