@@ -12,6 +12,7 @@ from django.core.files.storage import default_storage
 
 from .Chat_AI.full_matching import *
 from .Chat_AI.Chat_Title import *
+from .Chat_AI.summarization import *
 
 # Ask question
 class MessageCreateView(APIView):
@@ -99,6 +100,10 @@ class MessageCreateView(APIView):
         title = generate_chat_title(chat_messages = chat_messages)
         chat.title = title
         chat.save(update_fields=["title"])
+
+        summary = summarize_text(reply.text, 1)
+        reply.summary = summary
+        reply.save(update_fields=["summary"])
         
         message_resources = MessageResource.objects.filter(message = reply)
 

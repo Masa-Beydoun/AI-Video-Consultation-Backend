@@ -1,6 +1,8 @@
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.lsa import LsaSummarizer  # You can also try LexRankSummarizer, LuhnSummarizer, etc.
+from sumy.summarizers.lex_rank import LexRankSummarizer
+from sumy.summarizers.luhn import LuhnSummarizer
 
 def summarize_text(text, sentences_count=3):
     """
@@ -11,7 +13,7 @@ def summarize_text(text, sentences_count=3):
     :return: Summary string
     """
     parser = PlaintextParser.from_string(text, Tokenizer("english"))
-    summarizer = LsaSummarizer()
+    summarizer = LuhnSummarizer()
     summary = summarizer(parser.document, sentences_count)
     return " ".join(str(sentence) for sentence in summary)
 
