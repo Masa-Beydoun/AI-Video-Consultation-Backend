@@ -123,7 +123,6 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                 "status": status_value
             }
 
-            # Save DB notification
             Notification.objects.create(
                 user=application.user,
                 title=title,
@@ -131,7 +130,6 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                 data=data
             )
 
-            # Push notification
             send_notification_to_user(application.user, title, body, data)
 
         except Exception as e:
@@ -166,10 +164,7 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
             # Safe copy of photo
             if application.photo:
                 try:
-                    print(f"[DEBUG] Application has photo: {bool(application.photo)}")
                     original_file = application.photo.file_path
-                    print(f"[DEBUG] Photo file path: {getattr(original_file, 'name', None)}")
-
                     if hasattr(original_file, 'open'):
                         f = original_file.open('rb')
                     else:
@@ -183,9 +178,8 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                     )
                     consultant.photo = new_photo
                     consultant.save(update_fields=['photo'])
-                    print(f"[DEBUG] Consultant photo created: ID={new_photo.id}, URL={new_photo.file_path.url}")
                 except Exception as e:
-                    print(f"[DEBUG] Failed to copy photo: {e}")
+                    print(f"Failed to copy photo: {e}")
 
             # Update user role to consultant
             application.user.role = "consultant"
@@ -196,15 +190,30 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                 "user": consultant.user.email
             }
 
-        print(f"[DEBUG] Consultant created: ID={consultant.id}, user={consultant.user.email}")
-
+        # Build response with full domain/subdomain JSON
         response_data = {
             "id": application.id,
             "status": application.status,
             "reviewed_by": application.reviewed_by.email,
             "reviewed_at": application.reviewed_at,
-            "consultant_created": consultant_data
+            "consultant_created": consultant_data,
+            "domain": None,
+            "sub_domain": None
         }
+
+        if application.domain:
+            response_data["domain"] = {
+                "id": application.domain.id,
+                "name": application.domain.name,
+                "status": application.domain.status
+            }
+
+        if application.sub_domain:
+            response_data["sub_domain"] = {
+                "id": application.sub_domain.id,
+                "name": application.sub_domain.name,
+                "status": application.sub_domain.status
+            }
 
         return Response(response_data, status=status.HTTP_200_OK)
 

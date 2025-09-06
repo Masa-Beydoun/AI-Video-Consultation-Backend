@@ -5,6 +5,8 @@ from consulting.models.resource import Resource
 from consulting.models.domain import Domain
 from consulting.models.subdomain import SubDomain
 from django.contrib.contenttypes.models import ContentType
+from .subdomain_serializer import SubDomainSerializer
+from .domain_serializer import DomainSerializer
 
 class ConsultantApplicationSerializer(serializers.ModelSerializer):
     # Accept file upload for photo
@@ -19,6 +21,10 @@ class ConsultantApplicationSerializer(serializers.ModelSerializer):
     )
     uploaded_files = serializers.SerializerMethodField(read_only=True)
 
+    # Domain / SubDomain nested fields
+    domain = DomainSerializer(read_only=True)
+    sub_domain = SubDomainSerializer(read_only=True)
+
     domain_name = serializers.CharField(write_only=True, required=False)
     sub_domain_name = serializers.CharField(write_only=True, required=False)
 
@@ -26,9 +32,10 @@ class ConsultantApplicationSerializer(serializers.ModelSerializer):
         model = ConsultantApplication
         fields = [
             "id", "photo", "photo_file", "location", "description", "cost",
-            "years_experience", "languages", "status", "admin_notes",
-            "reviewed_at", "created_at", "user", "reviewed_by",
+            "years_experience", "languages", "status", "admin_notes", "reviewed_at",
+            "created_at", "user", "reviewed_by",
             "domain_name", "sub_domain_name",
+            "domain", "sub_domain",
             "files", "uploaded_files"
         ]
         read_only_fields = ["user", "status", "created_at", "reviewed_by", "reviewed_at"]
