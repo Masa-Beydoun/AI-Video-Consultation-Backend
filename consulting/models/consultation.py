@@ -25,4 +25,5 @@ class Consultation(models.Model):
     ]   
     consultation_type = models.CharField(choices= TYPE_CHOICES,null=True,blank=True)
 
+    views_count = models.PositiveIntegerField(default=0)
     

@@ -73,6 +73,10 @@ class MessageCreateView(APIView):
             text = ""
             for consultation_id in consultation_ids:
                 consultation = Consultation.objects.get(id = consultation_id)
+
+                consultation.views_count = F('views_count') + 1
+                consultation.save(update_fields=['views_count'])
+                
                 text += consultation.answer
                 text += ". "
         else :

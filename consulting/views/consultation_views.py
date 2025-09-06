@@ -380,3 +380,37 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                 os.remove(file_path)
             except Exception:
                 pass
+
+    @action(detail=False, methods=["get"], url_path="my-consultations")
+    def list_my_consultations(self, request):
+        """List all consultations for the authenticated consultant"""
+        consultant = getattr(request.user, "consultant_profile", None)
+        if not consultant:
+            return Response({"error": "You are not a consultant"}, status=status.HTTP_403_FORBIDDEN)
+
+        consultations = Consultation.objects.filter(consultant=consultant)
+        serializer = ConsultationSerializer(consultations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=["delete"], url_path="delete")
+    def delete_consultation(self, request, pk=None):
+        """Delete a consultation if owned by the consultant"""
+        consultant = getattr(request.user, "consultant_profile", None)
+        if not consultant:
+            return Response({"error": "You are not a consultant"}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            consultation = Consultation.objects.get(pk=pk, consultant=consultant)
+        except Consultation.DoesNotExist:
+            return Response({"error": "Consultation not found or you don’t have permission"},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        consultation.delete()
+        return Response({"message": "Consultation deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["get"], url_path="top-10")
+    def top_consultations(self, request):
+        """Get top 10 consultations by views_count"""
+        consultations = Consultation.objects.all().order_by('-views_count')[:10]
+        serializer = ConsultationSerializer(consultations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)

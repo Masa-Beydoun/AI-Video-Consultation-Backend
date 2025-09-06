@@ -11,5 +11,7 @@ class ConsultationSerializer(serializers.ModelSerializer):
             "answer",
             "confidence_question",
             "confidence_answer",
+            "views_count",  # new field
+
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id","views_count" ]
