@@ -348,14 +348,14 @@ def run_all_checks(video_path, reference_image_path=None):
     results["blurriness"] = detect_blurriness(video_path)
     results["resolution"] = check_resolution(video_path)
     results["frame_rate"] = check_frame_rate(video_path)
-    # results["face_consistency"] = detect_face_consistency(video_path)
+    results["face_consistency"] = detect_face_consistency(video_path)
 
-    # # 4) Identity verification (if reference photo provided)
-    # if reference_image_path:
-    #     try:
-    #         results["identity_verification"] = verify_identity(reference_image_path, video_path)
-    #     except Exception as e:
-    #         results["identity_verification"] = {"error": str(e)}
+    # 4) Identity verification (if reference photo provided)
+    if reference_image_path:
+        try:
+            results["identity_verification"] = verify_identity(reference_image_path, video_path)
+        except Exception as e:
+            results["identity_verification"] = {"error": str(e)}
 
     return results
 
