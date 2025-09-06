@@ -12,6 +12,7 @@ class WaitingQuestion(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     consultant = models.ForeignKey(Consultant, on_delete=models.CASCADE)
     question = models.TextField()
+    answered = models.BooleanField(default= False)
 
     def __str__(self):
         return " "

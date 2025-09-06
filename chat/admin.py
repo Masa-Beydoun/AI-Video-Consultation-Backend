@@ -6,7 +6,7 @@ from .models import WaitingQuestion
 
 # Register your models here.
 
-admin.site.register(Chat)
-admin.site.register(Message)
-admin.site.register(MessageResource)
-admin.site.register(WaitingQuestion)
+# admin.site.register(Chat)
+# admin.site.register(Message)
+# admin.site.register(MessageResource)
+# admin.site.register(WaitingQuestion)

@@ -4,8 +4,17 @@ from consulting.models.__init__ import Resource, SubDomain, Domain, Consultation
 from consulting.models.user import  User
 from consulting.models.__init__ import ConsultantApplication, Consultant, UserConsultation, Favorite
 
+from chat.models.chat import Chat
+from chat.models.message import Message
+from chat.models.messageresource import MessageResource
+from chat.models.waitingquestion import WaitingQuestion
+
 
 admin.site.register(User)
+admin.site.register(Chat)
+admin.site.register(MessageResource)
+admin.site.register(WaitingQuestion)
+admin.site.register(Message)
 admin.site.register(Favorite)
 admin.site.register(UserConsultation)
 admin.site.register(Consultant)

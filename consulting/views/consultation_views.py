@@ -17,7 +17,9 @@ from consulting.serializers.consultation_serializer import ConsultationSerialize
 from consulting.permissions import IsConsultant
 from consulting.utils.file_checks import run_all_checks, run_audio_checks
 from consulting.utils.segmenter_service import segment_video_into_consultations
+from notifications.firebase import send_notification_to_user  # adjust to your actual notification util
 
+from chat.models.waitingquestion import WaitingQuestion
 import tempfile, os, mimetypes
 import numpy as np
 
@@ -215,3 +217,148 @@ class ConsultationViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             return Response({"error": str(e)}, status=500)
+
+
+
+    @action(detail=False, methods=["post"], url_path="answer-waiting-question")
+    def answer_waiting_question(self, request):
+        """
+        Consultant answers a waiting question and uploads a consultation.
+        """
+        waiting_id = request.data.get("waiting_question_id")
+        question = request.data.get("question")
+        answer = request.data.get("answer")
+
+        if not waiting_id:
+            return Response({"error": "waiting_question_id is required"}, status=400)
+
+        try:
+            waiting = WaitingQuestion.objects.select_related("user", "consultant").get(pk=waiting_id)
+        except WaitingQuestion.DoesNotExist:
+            return Response({"error": "WaitingQuestion not found"}, status=404)
+
+        # prevent duplicate answers
+        if waiting.answered:
+            return Response({"error": "This question has already been answered"}, status=400)
+
+        # ensure consultant is the same as the one assigned
+        if waiting.consultant != request.user.consultant_profile:
+            return Response({"error": "You cannot answer this question"}, status=403)
+
+        if not answer:
+            return Response({"error": "Answer is required"}, status=400)
+
+        # create Consultation using question from WaitingQuestion
+        consultation = Consultation.objects.create(
+            consultant=request.user.consultant_profile,
+            question=waiting.question if not question else question,
+            answer=answer,
+            consultation_type="text",  # or detect from context
+        )
+
+        # mark WaitingQuestion as answered
+        waiting.answered = True
+        waiting.save()
+
+        # 🔔 notify the user
+        # send_notification_to_user(
+        #     waiting.user,
+        #     title="Your question has been answered",
+        #     body=f"Consultant {request.user.consultant_profile} uploaded an answer."
+        # )
+
+        return Response(ConsultationSerializer(consultation).data, status=201)
+
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="segment-answer-waiting",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def segment_answer_waiting(self, request):
+        """
+        Consultant uploads a video/audio file,
+        system segments it into Q/A, and answers a waiting question.
+        """
+        waiting_id = request.data.get("waiting_question_id")
+        uploaded_file = request.FILES.get("file")
+
+        if not waiting_id:
+            return Response({"error": "waiting_question_id is required"}, status=400)
+        if not uploaded_file:
+            return Response({"error": "'file' is required"}, status=400)
+
+        # fetch waiting question
+        try:
+            waiting = WaitingQuestion.objects.select_related("user", "consultant").get(pk=waiting_id)
+        except WaitingQuestion.DoesNotExist:
+            return Response({"error": "WaitingQuestion not found"}, status=404)
+
+        # prevent duplicate answers
+        if waiting.answered:
+            return Response({"error": "This question has already been answered"}, status=400)
+
+        # ensure consultant is the same as the one assigned
+        if waiting.consultant != request.user.consultant_profile:
+            return Response({"error": "You cannot answer this question"}, status=403)
+
+        # save uploaded file temporarily
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1])
+        for chunk in uploaded_file.chunks():
+            tmp_file.write(chunk)
+        tmp_file.flush()
+        tmp_file.close()
+        file_path = tmp_file.name
+
+        try:
+            # segment file into Q/A pairs
+            segments = segment_video_into_consultations(file_path, model_dir="./qa_classifier")
+
+            if not segments:
+                return Response({"error": "No Q/A segments detected"}, status=400)
+
+            created_consultations = []
+            for seg in segments:
+                question = seg.get("question") or waiting.question
+                answer = seg.get("answer")
+                if not answer:
+                    continue
+
+                consultation = Consultation.objects.create(
+                    consultant=request.user.consultant_profile,
+                    question=question,
+                    answer=answer,
+                    consultation_type="video",  # since we segmented from file
+                )
+                created_consultations.append(consultation)
+
+            if not created_consultations:
+                return Response({"error": "No valid consultations created"}, status=400)
+
+            # mark waiting question answered
+            waiting.answered = True
+            waiting.save()
+
+            # 🔔 notify user
+            # send_notification_to_user(
+                # waiting.user,
+                # title="Your question has been answered",
+                # body=f"Consultant {request.user.consultant_profile} uploaded an answer from video."
+            # )
+
+            return Response(
+                {
+                    "ok": True,
+                    "waiting_question_id": waiting.id,
+                    "consultations": ConsultationSerializer(created_consultations, many=True).data,
+                    "segments": segments,
+                },
+                status=201,
+            )
+
+        finally:
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass

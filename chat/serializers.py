@@ -8,6 +8,7 @@ from consulting.models.user import User
 from consulting.models.domain import Domain
 from consulting.models.subdomain import SubDomain
 from consulting.models.resource import Resource
+from consulting.serializers.domain_serializer import DomainSerializer
 
 class UserMessageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -39,10 +40,6 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'email', 'first_name', 'last_name', 'phone_number', 'role', 'gender']
 
-class DomainSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Domain
-        fields = '__all__'
 
 class SubDomainSerializer(serializers.ModelSerializer):
     class Meta:
