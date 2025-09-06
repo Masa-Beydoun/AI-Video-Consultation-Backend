@@ -50,3 +50,34 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notification.read = True
         notification.save(update_fields=["read"])
         return Response({"ok": True, "status": "read"})
+    
+
+    def send_notification_to_user(user, title, body, data=None):
+        from .models import DeviceToken, Notification
+        init_firebase()
+        
+        # Save to DB
+        Notification.objects.create(
+            user=user,
+            title=title,
+            body=body,
+            data=data or {}
+        )
+        
+        tokens = list(DeviceToken.objects.filter(user=user).values_list("token", flat=True))
+        if not tokens:
+            return {"ok": False, "error": "No device tokens for this user"}
+
+        message = messaging.MulticastMessage(
+            tokens=tokens,
+            notification=messaging.Notification(title=title, body=body),
+            data=data or {}
+        )
+        
+        response = messaging.send_multicast(message)
+        return {
+            "ok": True,
+            "success_count": response.success_count,
+            "failure_count": response.failure_count,
+            "responses": [r.__dict__ for r in response.responses]
+        }

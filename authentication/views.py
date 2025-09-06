@@ -14,6 +14,7 @@ from datetime import timedelta
 from .serializers import UserUpdateSerializer
 from rest_framework.decorators import api_view, permission_classes
 
+from notifications.models import DeviceToken
 
 from .serializers import (
     UserRegistrationSerializer,
@@ -83,6 +84,10 @@ def send_better_consult_otp_email(recipient_email: str, otp: str, *, purpose: st
     message.attach_alternative(html_content, "text/html")
     message.send(fail_silently=False)
 
+def save_device_token(user, token):
+    if token:
+        DeviceToken.objects.update_or_create(user=user, defaults={"token": token})
+
 
 # register 
 @api_view(['POST'])
@@ -92,6 +97,11 @@ def register_user(request):
     if serializer.is_valid():
         user = serializer.save()
         tokens = generate_tokens_for_user(user)
+
+        device_token = request.data.get("device_token")
+        save_device_token(user, device_token)
+
+
         return Response({
             'message': 'User registered successfully',
             'user_id': user.id,
@@ -112,6 +122,10 @@ def login_user(request):
             if not user.is_active:
                 return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
             tokens = generate_tokens_for_user(user)
+
+            device_token = request.data.get("device_token")
+            save_device_token(user, device_token)
+            
             return Response(tokens)
         else:
             return Response({'error': 'Invalid login information'}, status=status.HTTP_401_UNAUTHORIZED)

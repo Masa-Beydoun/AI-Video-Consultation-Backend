@@ -8,9 +8,12 @@ from chat.models.chat import Chat
 from chat.models.message import Message
 from chat.models.messageresource import MessageResource
 from chat.models.waitingquestion import WaitingQuestion
+from notifications.models import DeviceToken,Notification
 
 
 admin.site.register(User)
+admin.site.register(DeviceToken)
+admin.site.register(Notification)
 admin.site.register(Chat)
 admin.site.register(MessageResource)
 admin.site.register(WaitingQuestion)

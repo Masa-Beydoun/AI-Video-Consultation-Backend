@@ -22,7 +22,11 @@ from notifications.firebase import send_notification_to_user  # adjust to your a
 from chat.models.waitingquestion import WaitingQuestion
 import tempfile, os, mimetypes
 import numpy as np
+from chat.Chat_AI.full_matching import match_question
+from sentence_transformers import SentenceTransformer
 
+# Load model once (e.g., in your viewset class or globally)
+faq_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 class ConsultationViewSet(viewsets.ModelViewSet):
     queryset = Consultation.objects.all()
@@ -260,12 +264,11 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         waiting.answered = True
         waiting.save()
 
-        # 🔔 notify the user
-        # send_notification_to_user(
-        #     waiting.user,
-        #     title="Your question has been answered",
-        #     body=f"Consultant {request.user.consultant_profile} uploaded an answer."
-        # )
+        send_notification_to_user(
+            waiting.user,
+            title="Your question has been answered",
+            body=f"Consultant {request.user.consultant_profile.user.get_full_name()} uploaded an answer."
+        )
 
         return Response(ConsultationSerializer(consultation).data, status=201)
 
@@ -318,6 +321,21 @@ class ConsultationViewSet(viewsets.ModelViewSet):
             if not segments:
                 return Response({"error": "No Q/A segments detected"}, status=400)
 
+
+            # faqs = [{"consultation_id": i, "question": seg.get("question", ""), "answer": seg.get("answer", "")}
+            #         for i, seg in enumerate(segments)]
+            # faq_embeddings = faq_model.encode([f["question"] for f in faqs], convert_to_tensor=True)
+
+            # match = match_question(waiting.question, faq_model, faqs, faq_embeddings, threshold=0.65)
+
+            # if not match["matched"]:
+            #     return Response(
+            #         {"error": "Uploaded consultation does not match the user’s question"},
+            #         status=400,
+            #     )
+
+
+
             created_consultations = []
             for seg in segments:
                 question = seg.get("question") or waiting.question
@@ -340,12 +358,12 @@ class ConsultationViewSet(viewsets.ModelViewSet):
             waiting.answered = True
             waiting.save()
 
-            # 🔔 notify user
-            # send_notification_to_user(
-                # waiting.user,
-                # title="Your question has been answered",
-                # body=f"Consultant {request.user.consultant_profile} uploaded an answer from video."
-            # )
+            send_notification_to_user(
+                waiting.user,
+                title="Your question has been answered",
+                body=f"Consultant {request.user.consultant_profile.user.get_full_name()} uploaded an answer."
+            )
+
 
             return Response(
                 {

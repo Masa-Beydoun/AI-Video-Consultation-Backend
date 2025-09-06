@@ -13,6 +13,7 @@ from django.core.files.storage import default_storage
 from .Chat_AI.full_matching import *
 from .Chat_AI.Chat_Title import *
 from .Chat_AI.summarization import *
+from notifications.firebase import send_notification_to_user
 
 # Ask question
 class MessageCreateView(APIView):
@@ -119,10 +120,17 @@ class MessageCreateView(APIView):
         else :
 
             # Waiting Question
-            WaitingQuestion.objects.create(
+            waiting_question =  WaitingQuestion.objects.create(
             user = user,
             consultant = consultant,
             question = user_message.text
+            )
+
+            send_notification_to_user(
+                user=consultant.user,  # User object
+                title="New question awaiting your answer",
+                body=f"User {user.get_full_name()} asked: '{user_message.text}'",
+                data={"waiting_question_id": waiting_question.id}
             )
 
             consultants = Consultant.objects.all()
