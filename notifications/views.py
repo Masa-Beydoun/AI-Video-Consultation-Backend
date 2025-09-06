@@ -8,6 +8,11 @@ from django.http import JsonResponse
 from .models import DeviceToken
 from django.contrib.auth import get_user_model
 
+from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from .models import Notification
+from .serializers import NotificationSerializer
 
 @csrf_exempt
 @require_POST
@@ -31,3 +36,17 @@ def register_device_token(request):
 
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user).order_by("-created_at")
+
+    @action(detail=True, methods=["post"])
+    def mark_as_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.read = True
+        notification.save(update_fields=["read"])
+        return Response({"ok": True, "status": "read"})

@@ -9,8 +9,6 @@ class ConsultationSerializer(serializers.ModelSerializer):
             "consultant",
             "question",
             "answer",
-            "start_time",
-            "end_time",
             "confidence_question",
             "confidence_answer",
         ]

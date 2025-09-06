@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 
 from notifications.firebase import send_notification_to_user
+from notifications.models import Notification
 
 from django.utils import timezone
 from django.core.mail import EmailMultiAlternatives
@@ -108,13 +109,7 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"Failed to send email: {e}")
 
-        # After sending the email
-        try:
-            send_application_status_email(application.user, application, status_value)
-        except Exception as e:
-            print(f"Failed to send email: {e}")
-
-        # Send push notification
+        # Send push notification + store DB notification
         try:
             title = "Consultant Application Update"
             if status_value == "approved":
@@ -128,7 +123,17 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                 "status": status_value
             }
 
+            # Save DB notification
+            Notification.objects.create(
+                user=application.user,
+                title=title,
+                body=body,
+                data=data
+            )
+
+            # Push notification
             send_notification_to_user(application.user, title, body, data)
+
         except Exception as e:
             print(f"Failed to send push notification: {e}")
 
@@ -165,7 +170,6 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
                     original_file = application.photo.file_path
                     print(f"[DEBUG] Photo file path: {getattr(original_file, 'name', None)}")
 
-                    # Use FileField open or fallback to filesystem path
                     if hasattr(original_file, 'open'):
                         f = original_file.open('rb')
                     else:
