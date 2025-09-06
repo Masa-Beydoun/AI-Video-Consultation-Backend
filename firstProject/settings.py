@@ -182,3 +182,5 @@ AUTH_USER_MODEL = 'consulting.User'
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FIREBASE_CREDENTIALS_FILE = os.path.join(BASE_DIR, "secrets", "serviceAccountKey.json")
+
+FIREBASE_CONFIG_PATH = os.path.join(BASE_DIR, "secrets", "serviceAccountKey.json")

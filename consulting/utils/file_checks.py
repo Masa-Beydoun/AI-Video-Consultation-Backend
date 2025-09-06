@@ -28,27 +28,72 @@ class FaceVerificationSystem:
         v1, v2 = np.array(vec1), np.array(vec2)
         return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
+    def normalize_frame(self, frame):
+        """Normalize frame to 8-bit RGB format for DeepFace compatibility"""
+        # Ensure frame is not empty
+        if frame is None or frame.size == 0:
+            return None
+            
+        # Convert to uint8 if not already
+        if frame.dtype != np.uint8:
+            # Normalize to 0-255 range if needed
+            if frame.max() <= 1.0:
+                frame = (frame * 255).astype(np.uint8)
+            else:
+                frame = frame.astype(np.uint8)
+        
+        # Ensure it's 3-channel BGR (OpenCV format)
+        if len(frame.shape) == 2:  # Grayscale
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        elif len(frame.shape) == 3:
+            if frame.shape[2] == 4:  # RGBA
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
+            elif frame.shape[2] == 1:  # Single channel
+                frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        
+        return frame
+
     def best_orientation_similarity(self, frame: np.ndarray) -> float:
+        # Normalize frame first
+        frame = self.normalize_frame(frame)
+        if frame is None:
+            return -1
+            
         rotations = [
             frame,
             cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE),
             cv2.rotate(frame, cv2.ROTATE_180),
             cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
         ]
+        
         for i, rotated in enumerate(rotations):
             try:
-                result = DeepFace.represent(
-                    img_path=rotated,
-                    model_name=self.model_name,
-                    detector_backend="retinaface",
-                    enforce_detection=True
-                )
-                emb = result[0]["embedding"]
-                sim = self.cosine_similarity(self.photo_embedding, emb)
-                if sim >= self.similarity_threshold or i == len(rotations) - 1:
-                    return sim
+                # Save frame to temporary file for DeepFace
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
+                    temp_path = tmp_file.name
+                    cv2.imwrite(temp_path, rotated)
+                
+                try:
+                    result = DeepFace.represent(
+                        img_path=temp_path,
+                        model_name=self.model_name,
+                        detector_backend="retinaface",
+                        enforce_detection=True
+                    )
+                    emb = result[0]["embedding"]
+                    sim = self.cosine_similarity(self.photo_embedding, emb)
+                    if sim >= self.similarity_threshold or i == len(rotations) - 1:
+                        return sim
+                finally:
+                    # Clean up temp file
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
+                        
             except Exception as e:
                 print(f"[WARN] DeepFace failed on {i*90}°: {e}")
+                continue
         return -1
 
     def verify_identity(self, photo_path: str, video_path: str, max_frames=10):
@@ -66,7 +111,8 @@ class FaceVerificationSystem:
 
         while cap.isOpened() and processed < max_frames:
             ret, frame = cap.read()
-            if not ret: break
+            if not ret: 
+                break
             if idx % frame_interval == 0:
                 sim = self.best_orientation_similarity(frame)
                 if sim >= 0:
@@ -167,9 +213,10 @@ def detect_black_screen(path, sample_rate=30, black_threshold=0.6):
             ret, frame = cap.read()
             if not ret: break
             if frame_index % sample_rate == 0:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                if np.mean(gray) < 10: black_frames += 1
-                total_sampled += 1
+                if frame is not None and frame.size > 0:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    if np.mean(gray) < 10: black_frames += 1
+                    total_sampled += 1
             frame_index += 1
         cap.release()
         if total_sampled == 0: return {"error": "Video empty or unreadable"}
@@ -190,9 +237,10 @@ def detect_blurriness(path, sample_rate=30, blurry_threshold=50.0):
             ret, frame = cap.read()
             if not ret: break
             if frame_index % sample_rate == 0:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                if cv2.Laplacian(gray, cv2.CV_64F).var() < blurry_threshold: blurry_frames += 1
-                total_sampled += 1
+                if frame is not None and frame.size > 0:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    if cv2.Laplacian(gray, cv2.CV_64F).var() < blurry_threshold: blurry_frames += 1
+                    total_sampled += 1
             frame_index += 1
         cap.release()
         if total_sampled == 0: return {"error": "Video empty or unreadable"}
@@ -244,10 +292,11 @@ def detect_face_consistency(video_path, sample_rate=30, min_detection_ratio=0.7)
         ret, frame = cap.read()
         if not ret: break
         if frame_index % sample_rate == 0:
-            total_sampled += 1
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            faces = face_recognition.face_locations(rgb, model="hog")
-            if faces: face_detected += 1
+            if frame is not None and frame.size > 0:
+                total_sampled += 1
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                faces = face_recognition.face_locations(rgb, model="hog")
+                if faces: face_detected += 1
         frame_index += 1
     cap.release()
     if total_sampled == 0: return {"error": "video unreadable"}
@@ -321,4 +370,3 @@ def run_audio_checks(audio_path):
     return results
 
 # inside video_checks.py
-

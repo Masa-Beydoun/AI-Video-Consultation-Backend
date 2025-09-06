@@ -129,7 +129,7 @@ class MessageCreateView(APIView):
             send_notification_to_user(
                 user=consultant.user,  # User object
                 title="New question awaiting your answer",
-                body=f"User {user.get_full_name()} asked: '{user_message.text}'",
+                body=f"User {user.get_username()} asked: '{user_message.text}'",
                 data={"waiting_question_id": waiting_question.id}
             )
 

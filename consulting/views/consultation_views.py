@@ -267,7 +267,7 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         send_notification_to_user(
             waiting.user,
             title="Your question has been answered",
-            body=f"Consultant {request.user.consultant_profile.user.get_full_name()} uploaded an answer."
+            body=f"Consultant {request.user.consultant_profile.user.get_username()} uploaded an answer."
         )
 
         return Response(ConsultationSerializer(consultation).data, status=201)
