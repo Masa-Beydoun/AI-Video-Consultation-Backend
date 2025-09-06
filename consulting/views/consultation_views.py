@@ -194,6 +194,7 @@ class ConsultationViewSet(viewsets.ModelViewSet):
 
         resource = qc.resource
 
+        # Resolve file path
         def _resource_file_path(resource):
             file_field = getattr(resource, "file", None) or getattr(resource, "file_path", None)
             if hasattr(file_field, "path"):
@@ -209,19 +210,46 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         # 🔹 Call your segmentation utility
         try:
             segments = segment_video_into_consultations(file_path, model_dir="./qa_classifier")
+            if not segments:
+                return Response({"error": "No Q/A segments detected"}, status=400)
+
+            created_consultations = []
+            for seg in segments:
+                question = seg.get("question") or "No question"
+                answer = seg.get("answer") or "No answer"
+                confidence_q = seg.get("confidence_question")
+                confidence_a = seg.get("confidence_answer")
+
+                consultation = Consultation.objects.create(
+                    consultant=request.user.consultant_profile,
+                    question=question,
+                    answer=answer,
+                    consultation_type="video",
+                    resource_id=resource.id,  # <--- Link the resource!
+                    confidence_question=confidence_q,
+                    confidence_answer=confidence_a,
+                )
+            
+                # Update resource's relation_id to this consultation
+                resource.relation_id = consultation.id
+                resource.save(update_fields=["relation_id"])
+
+                created_consultations.append(consultation)
+
 
             return Response(
                 {
                     "ok": True,
                     "quality_check_id": qc.id,
+                    "resource_id": resource.id,
+                    "consultations": ConsultationSerializer(created_consultations, many=True).data,
                     "segments": segments,
                 },
-                status=200,
+                status=201,
             )
 
         except Exception as e:
             return Response({"error": str(e)}, status=500)
-
 
 
     @action(detail=False, methods=["post"], url_path="answer-waiting-question")
