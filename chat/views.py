@@ -15,6 +15,13 @@ from .Chat_AI.Chat_Title import *
 from .Chat_AI.summarization import *
 from notifications.firebase import send_notification_to_user
 
+from moviepy import VideoFileClip, concatenate_videoclips
+import tempfile, os
+from django.core.files.base import File
+import datetime
+import uuid
+
+
 # Ask question
 class MessageCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -91,12 +98,21 @@ class MessageCreateView(APIView):
         chat.save(update_fields=["modified_at"])
 
         if consultation_ids:
-            for consultation_id in consultation_ids:
-                consultation = Consultation.objects.get(id = consultation_id)
-                message_resource = MessageResource.objects.create(
-                    message = reply,
-                    resource = consultation.resource
+            consultations = Consultation.objects.filter(id__in=consultation_ids)
+            merged_resource = self.merge_consultation_videos(consultations)
+
+            if merged_resource:
+                MessageResource.objects.create(
+                    message=reply,
+                    resource=merged_resource
                 )
+            else:
+                # fallback: if no video found, attach originals
+                for consultation in consultations:
+                    MessageResource.objects.create(
+                        message=reply,
+                        resource=consultation.resource
+                    )
         
         # Chat Title
         chat_messages = []
@@ -189,6 +205,42 @@ class MessageCreateView(APIView):
         if result["results"] and result["results"][0]["match"]["matched"]:
             return result["results"][0]["match"]["main"]["answer"], consultation_ids
         return "Sorry, I don’t have an exact answer, but I can connect you with a consultant.", []
+    
+    def merge_consultation_videos(self, consultations, output_name="merged_video.mp4"):
+        
+        video_resources = [
+            c.resource for c in consultations 
+            if c.resource and c.resource.file_meta_data.get("file_type", "").startswith("video")
+        ]
+
+        if not video_resources:
+            return None
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_id = uuid.uuid4().hex[:6]
+        output_name = f"merged_video_{timestamp}_{unique_id}.mp4"
+
+        # Load clips
+        clips = [VideoFileClip(res.file_path.path) for res in video_resources]
+
+        if not clips:
+            return None
+
+        # Merge videos
+        final_clip = concatenate_videoclips(clips, method="compose")
+        merged_path = os.path.join(tempfile.gettempdir(), output_name)
+        final_clip.write_videofile(merged_path, codec="libx264")
+
+        # Save merged file as Resource
+        with open(merged_path, "rb") as f:
+            django_file = File(f, name=output_name)
+            merged_resource = Resource.objects.create(
+                file_path=django_file,
+                relation_type=video_resources[0].relation_type,
+                relation_id=video_resources[0].relation_id
+            )
+
+        return merged_resource
 
 
 # All chats
