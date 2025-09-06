@@ -130,7 +130,7 @@ class MessageCreateView(APIView):
                 user=consultant.user,  # User object
                 title="New question awaiting your answer",
                 body=f"User {user.get_username()} asked: '{user_message.text}'",
-                data={"waiting_question_id": waiting_question.id}
+                data={"waiting_question_id": str(waiting_question.id)}
             )
 
             consultants = Consultant.objects.all()
