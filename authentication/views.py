@@ -125,7 +125,6 @@ def login_user(request):
 
             device_token = request.data.get("device_token")
             save_device_token(user, device_token)
-            
             return Response(tokens)
         else:
             return Response({'error': 'Invalid login information'}, status=status.HTTP_401_UNAUTHORIZED)
