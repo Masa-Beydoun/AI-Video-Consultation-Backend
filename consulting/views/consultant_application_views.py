@@ -34,6 +34,28 @@ class ConsultantApplicationViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         return [permissions.IsAuthenticated()]
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
+        data = serializer.data
+
+        # only enrich if admin
+        if hasattr(request.user, "role") and request.user.role == "admin":
+            enriched_data = []
+            for obj, serialized in zip(queryset, data):
+                serialized = dict(serialized)
+                serialized["user_info"] = {
+                    "id": obj.user.id,
+                    "email": obj.user.email,
+                    "first_name": obj.user.first_name,
+                    "last_name": obj.user.last_name,
+                    "phone": getattr(obj.user, "phone", None),
+                    "role": obj.user.role,
+                }
+                enriched_data.append(serialized)
+            return Response(enriched_data)
+
+        return Response(data)
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         user = request.user
